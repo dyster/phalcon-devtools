@@ -232,11 +232,9 @@ class Scaffold extends Component
             $engine['rowEnd'] = ' }}</td>' . PHP_EOL;
             $engine['preVar'] = '';
             $engine['fileExtension'] = '.volt';
+            $engine['contentLink'] = "\t" . '{{ content() }}' . PHP_EOL . '</div>';
 
-            $this->_makeViewSearch($options, $engine);
 
-            //View layouts
-            $this->_makeLayoutsVolt($path, $options);
 
             //View index.phtml
             $this->_makeViewIndexVolt($path, $options);
@@ -254,12 +252,8 @@ class Scaffold extends Component
             $engine['rowEnd'] = ' ?></td>' . PHP_EOL;
             $engine['preVar'] = '$';
             $engine['fileExtension'] = '.phtml';
+            $engine['contentLink'] = "\t" . '<?php echo $this->getContent(); ?>' . PHP_EOL . '</div>';
 
-            $this->_makeViewSearch($options, $engine);
-
-
-            //View layouts
-            $this->_makeLayouts($path, $options);
 
             //View index.phtml
             $this->_makeViewIndex($path, $options);
@@ -273,7 +267,10 @@ class Scaffold extends Component
             $this->_makeViewEdit($path, $options);
         }
 
+        $this->_makeViewSearch($options, $engine);
 
+        //View layouts
+        $this->_makeLayouts($path, $options);
 
         return true;
     }
@@ -602,8 +599,14 @@ class Scaffold extends Component
             //View model layout
             $code = '';
             if (isset($options['theme'])) {
-                $code.='<?php $this->tag->stylesheetLink("themes/lightness/style") ?>'.PHP_EOL;
-                $code.='<?php $this->tag->stylesheetLink("themes/base") ?>'.PHP_EOL;
+                if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
+                    $code.='{{ stylesheet_link("themes/lightness/style") }}'.PHP_EOL;
+                    $code.='{{ stylesheet_link("themes/base") }}'.PHP_EOL;
+                } else {
+                    $code.='<?php $this->tag->stylesheetLink("themes/lightness/style") ?>'.PHP_EOL;
+                    $code.='<?php $this->tag->stylesheetLink("themes/base") ?>'.PHP_EOL;
+                }
+
             }
 
             if (isset($options['theme'])) {
@@ -611,7 +614,7 @@ class Scaffold extends Component
             } else {
                 $code .= '<div align="center">' . PHP_EOL;
             }
-            $code .= "\t" . '<?php echo $this->getContent(); ?>' . PHP_EOL . '</div>';
+            $code .= $engine['contentLink'];
 
             if ($this->isConsole()) {
                 echo $viewPath, PHP_EOL;
@@ -623,29 +626,6 @@ class Scaffold extends Component
         }
     }
 
-    /**
-     * @param $path
-     * @param $options
-     */
-    private function _makeLayoutsVolt($path, $options)
-    {
-
-
-            if (isset($options['theme'])) {
-                $code.='{{ stylesheet_link("themes/lightness/style") }}'.PHP_EOL;
-                $code.='{{ stylesheet_link("themes/base") }}'.PHP_EOL;
-            }
-
-
-            $code .= "\t" . '{{ content() }}' . PHP_EOL . '</div>';
-
-
-
-
-
-
-
-    }
 
     /**
      * @param $path

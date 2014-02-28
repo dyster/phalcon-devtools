@@ -219,18 +219,27 @@ class Scaffold extends Component
         $options['autocompleteFields'] 	 = array();
         $options['belongsToDefinitions'] = array();
 
+
+
         //Build Controller
         $this->_makeController($path, $options);
 
         if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
+            $engine['outputFile'] = '/search.volt';
+            $engine['templateFile'] = '/scaffold/no-forms/views/search.volt';
+            $engine['methodDelimiter'] = '.';
+            $engine['rowStart'] = "\t\t\t" . '<td>{{ ';
+            $engine['rowEnd'] = ' }}</td>' . PHP_EOL;
+            $engine['preVar'] = '';
+            $engine['fileExtension'] = '.volt';
+
+            $this->_makeViewSearch($options, $engine);
+
             //View layouts
             $this->_makeLayoutsVolt($path, $options);
 
             //View index.phtml
             $this->_makeViewIndexVolt($path, $options);
-
-            //View search.phtml
-            $this->_makeViewSearchVolt($path, $options);
 
             //View new.phtml
             $this->_makeViewNewVolt($path, $options);
@@ -238,14 +247,24 @@ class Scaffold extends Component
             //View edit.phtml
             $this->_makeViewEditVolt($path, $options);
         } else {
+            $engine['outputFile'] = '/search.phtml';
+            $engine['templateFile'] = '/scaffold/no-forms/views/search.phtml';
+            $engine['methodDelimiter'] = '->';
+            $engine['rowStart'] = "\t\t\t" . '<td><?php echo $';
+            $engine['rowEnd'] = ' ?></td>' . PHP_EOL;
+            $engine['preVar'] = '$';
+            $engine['fileExtension'] = '.phtml';
+
+            $this->_makeViewSearch($options, $engine);
+
+
             //View layouts
             $this->_makeLayouts($path, $options);
 
             //View index.phtml
             $this->_makeViewIndex($path, $options);
 
-            //View search.phtml
-            $this->_makeViewSearch($path, $options);
+
 
             //View new.phtml
             $this->_makeViewNew($path, $options);
@@ -253,6 +272,8 @@ class Scaffold extends Component
             //View edit.phtml
             $this->_makeViewEdit($path, $options);
         }
+
+
 
         return true;
     }
@@ -563,7 +584,7 @@ class Scaffold extends Component
      * @param string $path
      * @param array  $options
      */
-    private function _makeLayouts($path, $options)
+    private function _makeLayouts($options, $engine)
     {
 
         //Make Layouts dir
@@ -575,7 +596,7 @@ class Scaffold extends Component
         }
 
         $fileName = $options['fileName'];
-        $viewPath = $dirPathLayouts . '/' . $fileName . '.phtml';
+        $viewPath = $dirPathLayouts . '/' . $fileName . $engine['fileExtension'];
         if (!file_exists($viewPath) || $options['force']) {
 
             //View model layout
@@ -609,40 +630,21 @@ class Scaffold extends Component
     private function _makeLayoutsVolt($path, $options)
     {
 
-        //Make Layouts dir
-        $dirPathLayouts	= $options['viewsDir'] . '/layouts';
 
-        //If not exists dir; we make it
-        if (is_dir($dirPathLayouts) == false) {
-            mkdir($dirPathLayouts);
-        }
-
-        $fileName = Text::uncamelize($options['fileName']);
-        $viewPath = $dirPathLayouts . '/' . $fileName . '.volt';
-        if (!file_exists($viewPath || $options['force'])) {
-
-            //View model layout
-            $code = '';
             if (isset($options['theme'])) {
                 $code.='{{ stylesheet_link("themes/lightness/style") }}'.PHP_EOL;
                 $code.='{{ stylesheet_link("themes/base") }}'.PHP_EOL;
             }
 
-            if (isset($options['theme'])) {
-                $code .= '<div class="ui-layout" align="center">' . PHP_EOL;
-            } else {
-                $code .= '<div align="center">' . PHP_EOL;
-            }
+
             $code .= "\t" . '{{ content() }}' . PHP_EOL . '</div>';
 
-            if ($this->isConsole()) {
-                echo $viewPath, PHP_EOL;
-            }
 
-            $code = str_replace("\t", "    ", $code);
-            file_put_contents($viewPath, $code);
 
-        }
+
+
+
+
     }
 
     /**
@@ -784,27 +786,26 @@ class Scaffold extends Component
     /**
      * Creates the view to display search results
      *
-     * @param $path
      * @param $options
+     * @param $engine
      *
      * @throws \Phalcon\Builder\BuilderException
      */
-    private function _makeViewSearch($path, $options)
+    private function _makeViewSearch($options, $engine)
     {
-
         $dirPath = $options['viewsDir'] . $options['fileName'];
         if (is_dir($dirPath) == false) {
             mkdir($dirPath);
         }
 
-        $viewPath = $dirPath . '/search.phtml';
+        $viewPath = $dirPath . $engine['outputFile'];
         if (file_exists($viewPath)) {
             if (!$options['force']) {
                 return;
             }
         }
 
-        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/search.phtml';
+        $templatePath = $options['templatePath'] . $engine['templateFile'];
         if (!file_exists($templatePath)) {
             throw new BuilderException("Template '" . $templatePath . "' does not exist");
         }
@@ -817,18 +818,18 @@ class Scaffold extends Component
         $rowCode = '';
         $options['allReferences'] = array_merge($options['autocompleteFields'], $options['selectDefinition']);
         foreach ($options['dataTypes'] as $fieldName => $dataType) {
-            $rowCode .= "\t\t\t" . '<td><?php echo ';
             if (!isset($options['allReferences'][$fieldName])) {
                 if ($options['genSettersGetters']) {
-                    $rowCode .= '$' . $options['singular'] . '->get' . Text::camelize($fieldName) . '()';
+                    $middle = $options['singular'] . $engine['methodDelimiter'] . 'get' . Text::camelize($fieldName) . '()';
                 } else {
-                    $rowCode .= '$' . $options['singular'] . '->' . $fieldName;
+                    $middle = $options['singular'] . $engine['methodDelimiter'] . $fieldName;
                 }
             } else {
                 $detailField = ucfirst($options['allReferences'][$fieldName]['detail']);
-                $rowCode .= '$' . $options['singular'] . '->get' . $options['allReferences'][$fieldName]['tableName'] . '()->get' . $detailField . '()';
+                $middle = $options['singular'] . $engine['methodDelimiter'] . 'get' . $options['allReferences'][$fieldName]['tableName'] . '()'.$engine['methodDelimiter'].'get' . $detailField . '()';
             }
-            $rowCode .= ' ?></td>' . PHP_EOL;
+            $rowCode .= $engine['rowStart'] . $middle . $engine['rowEnd'];
+
         }
 
         if ($options['genSettersGetters']) {
@@ -842,77 +843,7 @@ class Scaffold extends Component
         $code = str_replace('$plural$', $options['plural'], $code);
         $code = str_replace('$headerColumns$', $headerCode, $code);
         $code = str_replace('$rowColumns$', $rowCode, $code);
-        $code = str_replace('$singularVar$', '$' . $options['singular'], $code);
-        $code = str_replace('$pk$', $idField, $code);
-
-        if ($this->isConsole()) {
-            echo $viewPath, PHP_EOL;
-        }
-
-        $code = str_replace("\t", "    ", $code);
-        file_put_contents($viewPath, $code);
-    }
-
-    /**
-     * @param $path
-     * @param $options
-     *
-     * @throws \Phalcon\Builder\BuilderException
-     */
-    private function _makeViewSearchVolt($path, $options)
-    {
-
-        $dirPath = $options['viewsDir'] . $options['fileName'];
-        if (is_dir($dirPath) == false) {
-            mkdir($dirPath);
-        }
-
-        $viewPath = $dirPath . '/search.volt';
-        if (file_exists($viewPath)) {
-            if (!$options['force']) {
-                return;
-            }
-        }
-
-        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/search.volt';
-        if (!file_exists($templatePath)) {
-            throw new BuilderException("Template '" . $templatePath . "' does not exist");
-        }
-
-        $headerCode = '';
-        foreach ($options['attributes'] as $attribute) {
-            $headerCode .= "\t\t\t" . '<th>' . $this->_getPossibleLabel($attribute) . '</th>' . PHP_EOL;
-        }
-
-        $rowCode = '';
-        $options['allReferences'] = array_merge($options['autocompleteFields'], $options['selectDefinition']);
-        foreach ($options['dataTypes'] as $fieldName => $dataType) {
-            $rowCode .= "\t\t\t" . '<td>{{ ';
-            if (!isset($options['allReferences'][$fieldName])) {
-                if ($options['genSettersGetters']) {
-                    $rowCode .= $options['singular'] . '.get' . Text::camelize($fieldName) . '()';
-                } else {
-                    $rowCode .= $options['singular'] . '.' . $fieldName;
-                }
-            } else {
-                $detailField = ucfirst($options['allReferences'][$fieldName]['detail']);
-                $rowCode .= $options['singular'] . '.get' . $options['allReferences'][$fieldName]['tableName'] . '().get' . $detailField . '()';
-            }
-            $rowCode .= ' }}</td>' . PHP_EOL;
-        }
-
-        if ($options['genSettersGetters']) {
-            $idField = 'get' . Text::camelize($options['attributes'][0]) . '()';
-        } else {
-            $idField =  $options['attributes'][0];
-        }
-
-        $code = file_get_contents($templatePath);
-
-        $code = str_replace('$plural$', $options['plural'], $code);
-        $code = str_replace('$headerColumns$', $headerCode, $code);
-        $code = str_replace('$rowColumns$', $rowCode, $code);
-        $code = str_replace('$singularVar$', $options['singular'], $code);
+        $code = str_replace('$singularVar$', $engine['preVar'] . $options['singular'], $code);
         $code = str_replace('$pk$', $idField, $code);
 
         if ($this->isConsole()) {

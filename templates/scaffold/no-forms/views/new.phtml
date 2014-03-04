@@ -1,25 +1,17 @@
 
-<?php echo $this->tag->form("$plural$/create") ?>
-
-<table width="100%">
-    <tr>
-        <td align="left"><?php echo $this->tag->linkTo(array("$plural$", "Go Back")) ?></td>
-        <td align="right"><?php echo $this->tag->submitButton("Save") ?></td>
-    <tr>
-</table>
-
 <?php echo $this->getContent(); ?>
 
-<div align="center">
+<ol class="breadcrumb">
+    <li><?php echo $this->tag->linkTo(array("$plural$", "Back")) ?></li>
+</ol>
+
+<?php echo $this->tag->form("$plural$/create") ?>
+
     <h1>Create $plural$</h1>
-</div>
-
-<table>
 $captureFields$
-    <tr>
-        <td></td>
-        <td><?php echo $this->tag->submitButton("Search") ?></td>
-    </tr>
-</table>
-
+    <div class="btn-toolbar" role="toolbar">
+        <div class="btn-group">
+            <button type="submit" class="btn btn-default">Search</button>
+        </div>
+    </div>
 </form>

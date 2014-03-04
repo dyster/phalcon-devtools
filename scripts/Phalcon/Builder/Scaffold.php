@@ -20,6 +20,7 @@
 
 namespace Phalcon\Builder;
 
+use Phalcon\Exception;
 use Phalcon\Text;
 use Phalcon\Script\Color;
 use Phalcon\Builder\Component;
@@ -218,59 +219,38 @@ class Scaffold extends Component
         $options['selectDefinition']	 = $selectDefinition;
         $options['autocompleteFields'] 	 = array();
         $options['belongsToDefinitions'] = array();
-
-
+        $options['bootstrap']            = 1;
 
         //Build Controller
         $this->_makeController($path, $options);
 
         if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
-            $engine['outputFile'] = '/search.volt';
-            $engine['templateFile'] = '/scaffold/no-forms/views/search.volt';
             $engine['methodDelimiter'] = '.';
-            $engine['rowStart'] = "\t\t\t" . '<td>{{ ';
-            $engine['rowEnd'] = ' }}</td>' . PHP_EOL;
             $engine['preVar'] = '';
             $engine['fileExtension'] = '.volt';
-            $engine['contentLink'] = "\t" . '{{ content() }}' . PHP_EOL . '</div>';
-
-
-
-            //View index.phtml
-            $this->_makeViewIndexVolt($path, $options);
-
-            //View new.phtml
-            $this->_makeViewNewVolt($path, $options);
-
-            //View edit.phtml
-            $this->_makeViewEditVolt($path, $options);
+            $engine['tagStart'] = '{{ ';
+            $engine['tagEnd'] = ' }}';
         } else {
-            $engine['outputFile'] = '/search.phtml';
-            $engine['templateFile'] = '/scaffold/no-forms/views/search.phtml';
             $engine['methodDelimiter'] = '->';
-            $engine['rowStart'] = "\t\t\t" . '<td><?php echo $';
-            $engine['rowEnd'] = ' ?></td>' . PHP_EOL;
             $engine['preVar'] = '$';
             $engine['fileExtension'] = '.phtml';
-            $engine['contentLink'] = "\t" . '<?php echo $this->getContent(); ?>' . PHP_EOL . '</div>';
-
-
-            //View index.phtml
-            $this->_makeViewIndex($path, $options);
-
-
-
-            //View new.phtml
-            $this->_makeViewNew($path, $options);
-
-            //View edit.phtml
-            $this->_makeViewEdit($path, $options);
+            $engine['tagStart'] = '<?php echo $';
+            $engine['tagEnd'] = ' ?>';
         }
 
         $this->_makeViewSearch($options, $engine);
 
         //View layouts
-        $this->_makeLayouts($path, $options);
+        $this->_makeLayouts($options, $engine);
+
+        //Index view
+        $this->_makeViewIndex($path, $options, $engine);
+
+        //New view
+        $this->_makeViewNew($path, $options, $engine);
+
+        //Edit view
+        $this->_makeViewEdit($path, $options, $engine);
 
         return true;
     }
@@ -387,39 +367,34 @@ class Scaffold extends Component
      */
     private function _makeField($attribute, $dataType, $relationField, $selectDefinition)
     {
-        $code = "\t" . '<tr>' . PHP_EOL .
-                "\t\t" . '<td align="right">' . PHP_EOL .
-                "\t\t\t" . '<label for="' . $attribute . '">' . $this->_getPossibleLabel($attribute) . '</label>' . PHP_EOL .
-                "\t\t" . '</td>' . PHP_EOL .
-                "\t\t" . '<td align="left">';
+        $code = '';
 
         if (isset($relationField[$attribute])) {
-            $code .= PHP_EOL . "\t\t\t\t" . '<?php echo $this->tag->select(array("' . $attribute . '", $' . $selectDefinition[$attribute]['varName'] .
-                ', "using" => "' . $selectDefinition[$attribute]['primaryKey'] . ',' . $selectDefinition[$attribute]['detail'] . '", "useDummy" => true)) ?>';
+            $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->select(array("' . $attribute . '", $' . $selectDefinition[$attribute]['varName'] .
+                ', "using" => "' . $selectDefinition[$attribute]['primaryKey'] . ',' . $selectDefinition[$attribute]['detail'] . '", "useDummy" => true, "class" => "form-control")) ?>';
         } else {
 
             switch ($dataType) {
                 case Column::TYPE_CHAR:
-                    $code .= PHP_EOL . "\t\t\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '")) ?>';
+                    $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "class" => "form-control")) ?>';
                     break;
                 case Column::TYPE_DECIMAL:
                 case Column::TYPE_INTEGER:
-                    $code .= PHP_EOL . "\t\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "number")) ?>';
+                    $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "number", "class" => "form-control")) ?>';
                     break;
                 case Column::TYPE_DATE:
-                    $code .= PHP_EOL . "\t\t\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "date")) ?>';
+                    $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "date", "class" => "form-control")) ?>';
                     break;
                 case Column::TYPE_TEXT:
-                    $code .= PHP_EOL . "\t\t\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "date")) ?>';
+                    $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "type" => "date", "class" => "form-control")) ?>';
                     break;
                 default:
-                    $code .= PHP_EOL . "\t\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "size" => 30)) ?>';
+                    $code .= PHP_EOL . "\t\t" . '<?php echo $this->tag->textField(array("' . $attribute . '", "size" => 30, "class" => "form-control")) ?>';
                     break;
             }
         }
 
-        $code .= PHP_EOL . "\t\t" . '</td>';
-        $code .= PHP_EOL . "\t" . '</tr>' . PHP_EOL;
+
 
         return $code;
     }
@@ -434,39 +409,34 @@ class Scaffold extends Component
      */
     private function _makeFieldVolt($attribute, $dataType, $relationField, $selectDefinition)
     {
-        $code = "\t" . '<tr>' . PHP_EOL .
-                "\t\t" . '<td align="right">' . PHP_EOL .
-                "\t\t\t" . '<label for="' . $attribute . '">' . $this->_getPossibleLabel($attribute) . '</label>' . PHP_EOL .
-                "\t\t" . '</td>' . PHP_EOL .
-                "\t\t" . '<td align="left">';
+        $code = '';
 
         if (isset($relationField[$attribute])) {
-            $code .= PHP_EOL . "\t\t\t\t" . '{{ select("' . $attribute . '", ' . $selectDefinition[$attribute]['varName'] .
-                ', "using" :[ "' . $selectDefinition[$attribute]['primaryKey'] . ',' . $selectDefinition[$attribute]['detail'] . '", "useDummy" => true]) }}';
+            $code .= PHP_EOL . "\t\t" . '{{ select("' . $attribute . '", ' . $selectDefinition[$attribute]['varName'] .
+                ', "using" :[ "' . $selectDefinition[$attribute]['primaryKey'] . ',' . $selectDefinition[$attribute]['detail'] . '", "useDummy" => true, "class" => "form-control"]) }}';
         } else {
 
             switch ($dataType) {
                 case Column::TYPE_CHAR:
-                    $code .= PHP_EOL . "\t\t\t\t" . '{{ text_field("' . $attribute . '") }}';
+                    $code .= PHP_EOL . "\t\t" . '{{ text_field("' . $attribute . '", "class" : "form-control") }}';
                     break;
                 case Column::TYPE_DECIMAL:
                 case Column::TYPE_INTEGER:
-                    $code .= PHP_EOL . "\t\t\t" . '{{ text_field("' . $attribute . '", "type" : "numeric") }}';
+                    $code .= PHP_EOL . "\t\t" . '{{ text_field("' . $attribute . '", "type" : "numeric", "class" : "form-control") }}';
                     break;
                 case Column::TYPE_DATE:
-                    $code .= PHP_EOL . "\t\t\t\t" . '{{ text_field("' . $attribute . '", "type" : "date") }}';
+                    $code .= PHP_EOL . "\t\t" . '{{ text_field("' . $attribute . '", "type" : "date", "class" : "form-control") }}';
                     break;
                 case Column::TYPE_TEXT:
-                    $code .= PHP_EOL . "\t\t\t\t" . '{{ text_field("' . $attribute . '", "type" : "date") }}';
+                    $code .= PHP_EOL . "\t\t" . '{{ text_field("' . $attribute . '", "type" : "date", "class" : "form-control") }}';
                     break;
                 default:
-                    $code .= PHP_EOL . "\t\t\t" . '{{ text_field("' . $attribute . '", "size" : 30) }}';
+                    $code .= PHP_EOL . "\t\t" . '{{ text_field("' . $attribute . '", "size" : 30, "class" : "form-control") }}';
                     break;
             }
         }
 
-        $code .= PHP_EOL . "\t\t" . '</td>';
-        $code .= PHP_EOL . "\t" . '</tr>' . PHP_EOL;
+
 
         return $code;
     }
@@ -495,36 +465,16 @@ class Scaffold extends Component
                 continue;
             }
 
-            $code .= $this->_makeField($attribute, $dataType, $relationField, $selectDefinition);
-        }
+            $code .= "\t" . '<div class="form-group">' . PHP_EOL .
+                "\t\t" . '<label for="' . $attribute . '">' . $this->_getPossibleLabel($attribute) . '</label>';
 
-        return $code;
-    }
-
-    /**
-     * @param $path
-     * @param $options
-     * @param $action
-     *
-     * @return string
-     */
-    private function _makeFieldsVolt($path, $options, $action)
-    {
-
-        $entity	= $options['entity'];
-        $relationField = $options['relationField'];
-        $autocompleteFields	= $options['autocompleteFields'];
-        $selectDefinition = $options['selectDefinition'];
-        $identityField = $options['identityField'];
-
-        $code = '';
-        foreach ($options['dataTypes'] as $attribute => $dataType) {
-
-            if (($action == 'new' || $action == 'edit' ) && $attribute == $identityField) {
-                continue;
+            if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
+                $code .= $this->_makeFieldVolt($attribute, $dataType, $relationField, $selectDefinition);
+            } else {
+                $code .= $this->_makeField($attribute, $dataType, $relationField, $selectDefinition);
             }
 
-            $code .= $this->_makeFieldVolt($attribute, $dataType, $relationField, $selectDefinition);
+            $code .= PHP_EOL . "\t" . '</div>' . PHP_EOL;
         }
 
         return $code;
@@ -578,8 +528,9 @@ class Scaffold extends Component
     /**
      * Make layouts of model using scaffold
      *
-     * @param string $path
-     * @param array  $options
+     * @param array $options
+     * @param $engine
+     * @internal param string $path
      */
     private function _makeLayouts($options, $engine)
     {
@@ -598,23 +549,14 @@ class Scaffold extends Component
 
             //View model layout
             $code = '';
-            if (isset($options['theme'])) {
-                if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
-                    $code.='{{ stylesheet_link("themes/lightness/style") }}'.PHP_EOL;
-                    $code.='{{ stylesheet_link("themes/base") }}'.PHP_EOL;
-                } else {
-                    $code.='<?php $this->tag->stylesheetLink("themes/lightness/style") ?>'.PHP_EOL;
-                    $code.='<?php $this->tag->stylesheetLink("themes/base") ?>'.PHP_EOL;
-                }
 
-            }
+            $code .= '<div class="container">' . PHP_EOL;
 
-            if (isset($options['theme'])) {
-                $code .= '<div class="ui-layout" align="center">' . PHP_EOL;
+            if (isset($options['templateEngine']) && $options['templateEngine'] == 'volt') {
+                $code .= "\t" . $engine['tagStart'] . 'content()' . $engine['tagEnd'] . PHP_EOL . '</div>';
             } else {
-                $code .= '<div align="center">' . PHP_EOL;
+                $code .= "\t" . $engine['tagStart'] . 'this->getContent()' . $engine['tagEnd'] . PHP_EOL . '</div>';
             }
-            $code .= $engine['contentLink'];
 
             if ($this->isConsole()) {
                 echo $viewPath, PHP_EOL;
@@ -632,9 +574,10 @@ class Scaffold extends Component
      * @param $options
      * @param $type
      *
-     * @throws \Phalcon\Builder\BuilderException
+     * @param $engine
+     * @throws BuilderException
      */
-    private function makeView($path, $options, $type)
+    private function makeView($path, $options, $type, $engine)
     {
 
         $dirPath = $options['viewsDir'] . $options['fileName'];
@@ -642,14 +585,14 @@ class Scaffold extends Component
             mkdir($dirPath);
         }
 
-        $viewPath = $dirPath . '/' .$type. '.phtml';
+        $viewPath = $dirPath . '/' .$type. $engine['fileExtension'];
         if (file_exists($viewPath)) {
             if (!$options['force']) {
                 return;
             }
         }
 
-        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/' .$type. '.phtml';
+        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/' .$type . $engine['fileExtension'];
         if (!file_exists($templatePath)) {
             throw new BuilderException("Template '" . $templatePath . "' does not exist");
         }
@@ -668,99 +611,40 @@ class Scaffold extends Component
     }
 
     /**
-     * @param $path
-     * @param $options
-     * @param $type
-     *
-     * @throws \Phalcon\Builder\BuilderException
-     */
-    private function makeViewVolt($path, $options, $type)
-    {
-
-        $dirPath = $options['viewsDir'] . $options['fileName'];
-        if (is_dir($dirPath) == false) {
-            mkdir($dirPath);
-        }
-
-        $viewPath = $dirPath . '/' .$type. '.volt';
-        if (file_exists($viewPath)) {
-            if (!$options['force']) {
-                return;
-            }
-        }
-
-        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/' .$type. '.volt';
-        if (!file_exists($templatePath)) {
-            throw new BuilderException("Template '" . $templatePath . "' does not exist");
-        }
-
-        $code = file_get_contents($templatePath);
-
-        $code = str_replace('$plural$', $options['plural'], $code);
-        $code = str_replace('$captureFields$', self::_makeFieldsVolt($path, $options, $type), $code);
-
-        if ($this->isConsole()) {
-            echo $viewPath, PHP_EOL;
-        }
-
-        $code = str_replace("\t", "    ", $code);
-        file_put_contents($viewPath, $code);
-    }
-
-    /**
      * Creates main view
      *
      * @param string $path
-     * @param array  $options
+     * @param array $options
+     * @param $engine
      */
-    private function _makeViewIndex($path, $options)
+    private function _makeViewIndex($path, $options, $engine)
     {
-        $this->makeView($path, $options, 'index');
-    }
-
-    /**
-     * @param $path
-     * @param $options
-     */
-    private function _makeViewIndexVolt($path, $options)
-    {
-        $this->makeViewVolt($path, $options, 'index');
+        $this->makeView($path, $options, 'index', $engine);
     }
 
     /**
      * Creates the view to create a new item
      *
      * @param string $path
-     * @param array  $options
+     * @param array $options
+     * @param $engine
      */
-    private function _makeViewNew($path, $options)
+    private function _makeViewNew($path, $options, $engine)
     {
-        $this->makeView($path, $options, 'new');
+        $this->makeView($path, $options, 'new', $engine);
     }
 
-    /**
-     * @param $path
-     * @param $options
-     */
-    private function _makeViewNewVolt($path, $options)
-    {
-        $this->makeViewVolt($path, $options, 'new');
-    }
 
     /**
      * Creates the view to edit an item
      *
      * @param string $path
-     * @param array  $options
+     * @param array $options
+     * @param $engine
      */
-    private function _makeViewEdit($path, $options)
+    private function _makeViewEdit($path, $options, $engine)
     {
-        $this->makeView($path, $options, 'edit');
-    }
-
-    private function _makeViewEditVolt($path, $options)
-    {
-        $this->makeViewVolt($path, $options, 'edit');
+        $this->makeView($path, $options, 'edit', $engine);
     }
 
     /**
@@ -778,14 +662,14 @@ class Scaffold extends Component
             mkdir($dirPath);
         }
 
-        $viewPath = $dirPath . $engine['outputFile'];
+        $viewPath = $dirPath . '/search' . $engine['fileExtension'];
         if (file_exists($viewPath)) {
             if (!$options['force']) {
                 return;
             }
         }
 
-        $templatePath = $options['templatePath'] . $engine['templateFile'];
+        $templatePath = $options['templatePath'] . '/scaffold/no-forms/views/search' . $engine['fileExtension'];
         if (!file_exists($templatePath)) {
             throw new BuilderException("Template '" . $templatePath . "' does not exist");
         }
@@ -808,7 +692,7 @@ class Scaffold extends Component
                 $detailField = ucfirst($options['allReferences'][$fieldName]['detail']);
                 $middle = $options['singular'] . $engine['methodDelimiter'] . 'get' . $options['allReferences'][$fieldName]['tableName'] . '()'.$engine['methodDelimiter'].'get' . $detailField . '()';
             }
-            $rowCode .= $engine['rowStart'] . $middle . $engine['rowEnd'];
+            $rowCode .= "\t\t\t" . '<td>' . $engine['tagStart'] . $middle . $engine['tagEnd'] . '</td>' . PHP_EOL;
 
         }
 

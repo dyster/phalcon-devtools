@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -111,7 +111,7 @@ class Stub
      */
     protected function _exportDefinition(\ReflectionClass $reflectionClass)
     {
-        $definition = array($this->_removeNamespace($reflectionClass));
+        $definition = [$this->_removeNamespace($reflectionClass)];
 
         if ($reflectionClass->isInterface()) {
             array_unshift($definition, 'interface');
@@ -160,7 +160,7 @@ class Stub
     protected function _exportClassConstants(\ReflectionClass $reflectionClass)
     {
         $constants = $reflectionClass->getConstants();
-        $all = array();
+        $all = [];
 
         if (!empty($constants)) {
             foreach ($constants as $name => $value) {
@@ -168,11 +168,11 @@ class Stub
             }
         }
 
-        if (!empty($all)) {
-            return implode("\n", $all);
+        if (empty($all)) {
+            return null;
         }
 
-        return null;
+        return implode("\n", $all);
     }
 
     /**
@@ -190,7 +190,7 @@ class Stub
         $output = '';
 
         foreach ($properties as $property) {
-            $doc = array("\t/**");
+            $doc = ["\t/**"];
             if ($property->isStatic()) {
                 $doc[] = sprintf("\t * @static");
             }
@@ -198,7 +198,7 @@ class Stub
             $doc[] = "\t */\n";
             $output .= implode("\n", $doc);
 
-            $var = array();
+            $var = [];
             if ($property->isPrivate()) {
                 $var[] = 'private';
             } elseif ($property->isProtected()) {
@@ -233,8 +233,8 @@ class Stub
         $output = '';
 
         foreach ($methods as $method) {
-            $doc = array("\t/**");
-            $func = array();
+            $doc = ["\t/**"];
+            $func = [];
 
             if ($method->isFinal()) {
                 $doc[] = sprintf("\t * @final");
@@ -256,35 +256,33 @@ class Stub
 
             $func[] = 'function';
 
-            $params = array();
+            $params = [];
 
-            if ($method->getNumberOfParameters() > 0) {
-                foreach ($method->getParameters() as $parameter) {
-                    $name = $parameter->getName();
-                    $_doc = '';
-                    $param = '$' . $name;
+            foreach ($method->getParameters() as $parameter) {
+                $name = $parameter->getName();
+                $_doc = '';
+                $param = '$' . $name;
 
-                    if ($parameter->isOptional() && $parameter->isDefaultValueAvailable()) {
-                        if ($parameter->isArray()) {
-                            $param .= ' = ' . print_r($parameter->getDefaultValue(), true);
-                            $_doc .= 'array ';
+                if ($parameter->isOptional() && $parameter->isDefaultValueAvailable()) {
+                    if ($parameter->isArray()) {
+                        $param .= ' = ' . print_r($parameter->getDefaultValue(), true);
+                        $_doc .= 'array ';
+                    } else {
+                        if (gettype($method->getDefaultValue()) == 'string') {
+                            $param .= " = '" . $method->getDefaultValue() . "'";
                         } else {
-                            if (gettype($method->getDefaultValue()) == 'string') {
-                                $param .= " = '" . $method->getDefaultValue() . "'";
-                            } else {
-                                $param .= " = " . $method->getDefaultValue();
-                            }
-
-                            $_doc .= gettype($method->getDefaultValue()) . ' ';
+                            $param .= " = " . $method->getDefaultValue();
                         }
-                    } elseif ($parameter->isDefaultValueAvailable()) {
-                        $param = '&' . $param;
-                    }
 
-                    $_doc .= '$';
-                    $doc[] = sprintf("\t * @param %s", $_doc . $name);
-                    $params[] = $param;
+                        $_doc .= gettype($method->getDefaultValue()) . ' ';
+                    }
+                } elseif ($parameter->isDefaultValueAvailable()) {
+                    $param = '&' . $param;
                 }
+
+                $_doc .= '$';
+                $doc[] = sprintf("\t * @param %s", $_doc . $name);
+                $params[] = $param;
             }
 
             $func[] = $method->getName() . '(' . implode(', ', $params) . ')';
@@ -306,9 +304,9 @@ class Stub
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir), \RecursiveIteratorIterator::CHILD_FIRST);
 
         foreach ($iterator as $path) {
-            if ($path->isDir() && !in_array($path->getFileName(), array('.', '..'))) {
+            if ($path->isDir() && !in_array($path->getFileName(), ['.', '..'])) {
                 rmdir($path->getPathName());
-            } elseif ($path->isFile() && !in_array($path->getFileName(), array('.', '..'))) {
+            } elseif ($path->isFile() && !in_array($path->getFileName(), ['.', '..'])) {
                 unlink($path->getPathName());
             }
         }
@@ -316,6 +314,5 @@ class Stub
         rmdir($dir);
     }
 }
-
-$s = new Stub('phalcon', __DIR__ . '/../../../ide/phpstorm');
+$s = new Stub('phalcon', __DIR__ . '/../../../ide');
 $s->generate();

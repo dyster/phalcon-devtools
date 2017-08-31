@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -15,6 +15,7 @@
   +------------------------------------------------------------------------+
   | Authors: Andres Gutierrez <andres@phalconphp.com>                      |
   |          Eduar Carvajal <eduar@phalconphp.com>                         |
+  |          Serghei Iakovlev <serghei@phalconphp.com>                     |
   +------------------------------------------------------------------------+
 */
 
@@ -24,49 +25,52 @@ use Phalcon\Script;
 use Phalcon\Script\Color;
 use Phalcon\Events\Manager as EventsManager;
 use Phalcon\Filter;
+use Phalcon\Builder\Path;
+use Phalcon\Config\Adapter\Ini as IniConfig;
+use Phalcon\Config\Adapter\Json as JsonConfig;
+use Phalcon\Config\Adapter\Yaml as YamlConfig;
+use Phalcon\Config;
 
 /**
- * Phalcon\Commands\Command
+ * Command Class
  *
- * Allows to implement devtools commands
+ * @package   Phalcon\Commands
+ * @copyright Copyright (c) 2011-2016 Phalcon Team (team@phalconphp.com)
+ * @license   New BSD License
  */
-abstract class Command
+abstract class Command implements CommandsInterface
 {
-
     /**
      * Script
-     *
      * @var \Phalcon\Script
      */
     protected $_script;
 
     /**
      * Events Manager
-     *
      * @var \Phalcon\Events\Manager
      */
     protected $_eventsManager;
 
     /**
      * Output encoding of the script.
-     *
      * @var string
      */
     protected $_encoding = 'UTF-8';
 
     /**
      * Parameters received by the script.
-     *
-     * @var string
+     * @var array
      */
-    protected $_parameters = array();
+    protected $_parameters = [];
 
     /**
      * Possible prepared arguments.
-     *
      * @var array
      */
-    protected $_preparedArguments = array();
+    protected $_preparedArguments = [];
+
+    protected $path;
 
     /**
      * Phalcon\Commands\Command
@@ -77,6 +81,8 @@ abstract class Command
     final public function __construct(Script $script, EventsManager $eventsManager)
     {
         $this->_script = $script;
+        $this->_eventsManager = $eventsManager;
+        $this->path = new Path();
     }
 
     /**
@@ -120,33 +126,93 @@ abstract class Command
     }
 
     /**
-     * Parse the parameters passed to the script.
+     * @param string $path Config path
      *
-     * @param  array             $parameters
-     * @param  array             $possibleAlias
-     * @return array
+     * @return \Phalcon\Config
      * @throws CommandsException
      */
-    public function parseParameters($parameters = array(), $possibleAlias = array())
+    protected function getConfig($path)
     {
-
-        if (count($parameters) == 0) {
-            if (isset($this->_possibleParameters)) {
-                $parameters = $this->_possibleParameters;
-            } else {
-                if (method_exists($this, 'getPossibleParams')) {
-                    $parameters = $this->getPossibleParams();
-                } else {
-                    throw new CommandsException("Cannot load possible parameters for script: " . get_class($this));
+        foreach (['app/config/', 'config/'] as $configPath) {
+            foreach (['ini', 'php', 'json', 'yaml', 'yml'] as $extension) {
+                if (file_exists($path . $configPath . "/config." . $extension)) {
+                    return $this->loadConfig($path . $configPath . "/config." . $extension);
                 }
             }
         }
 
-        if (!is_array($parameters)) {
-            throw new CommandsException("Cannot load possible parameters for script: " . get_class($this));
+        $directory = new \RecursiveDirectoryIterator('.');
+        $iterator = new \RecursiveIteratorIterator($directory);
+        foreach ($iterator as $f) {
+            if (preg_match('/config\.(php|ini|json|yaml|yml)$/i', $f->getPathName())) {
+                return $this->loadConfig($f->getPathName());
+            }
         }
 
-        $arguments = array();
+        throw new CommandsException("Builder can't locate the configuration file.");
+    }
+
+    /**
+     * Determines correct adapter by file name
+     * and load config
+     *
+     * @param string $fileName Config file name
+     *
+     * @return \Phalcon\Config
+     * @throws CommandsException
+     */
+    protected function loadConfig($fileName)
+    {
+        $pathInfo = pathinfo($fileName);
+
+        if (!isset($pathInfo['extension'])) {
+            throw new CommandsException("Config file extension not found.");
+        }
+
+        $extension = strtolower(trim($pathInfo['extension']));
+
+        switch ($extension) {
+            case 'php':
+                $config = include($fileName);
+                if (is_array($config)) {
+                    $config = new Config($config);
+                }
+
+                return $config;
+
+            case 'ini':
+                return new IniConfig($fileName);
+
+            case 'json':
+                return new JsonConfig($fileName);
+
+            case 'yaml':
+            case 'yml':
+                return new YamlConfig($fileName);
+
+            default:
+                throw new CommandsException("Builder can't locate the configuration file.");
+        }
+    }
+
+    /**
+     * Parse the parameters passed to the script.
+     *
+     * @param  array $parameters    Command parameters
+     * @param  array $possibleAlias Command aliases
+     * @return array
+     *
+     * @throws CommandsException
+     *
+     * @todo Refactor
+     */
+    public function parseParameters(array $parameters = [], $possibleAlias = [])
+    {
+        if (count($parameters) == 0) {
+            $parameters = $this->getPossibleParams();
+        }
+
+        $arguments = [];
         foreach ($parameters as $parameter => $description) {
             if (strpos($parameter, "=") !== false) {
                 $parameterParts = explode("=", $parameter);
@@ -154,59 +220,38 @@ abstract class Command
                     throw new CommandsException("Invalid definition for the parameter '$parameter'");
                 }
                 if (strlen($parameterParts[0]) == "") {
-                    throw new CommandsException("Invalid definition for the parameter '" . $parameter . "'");
+                    throw new CommandsException("Invalid definition for the parameter '$parameter'");
                 }
-                if (!in_array($parameterParts[1], array('s', 'i', 'l'))) {
-                    throw new CommandsException("Incorrect data type on parameter '" . $parameter . "'");
+                if (!in_array($parameterParts[1], ['s', 'i', 'l'])) {
+                    throw new CommandsException("Incorrect data type on parameter '$parameter'");
                 }
                 $this->_preparedArguments[$parameterParts[0]] = true;
-                $arguments[$parameterParts[0]] = array(
+                $arguments[$parameterParts[0]] = [
                     'have-option' => true,
                     'option-required' => true,
                     'data-type' => $parameterParts[1]
-                );
+                ];
             } else {
-                if (strpos($parameter, "=") !== false) {
-                    $parameterParts = explode("=", $parameter);
-                    if (count($parameterParts) != 2) {
-                        throw new CommandsException("Invalid definition for the parameter '$parameter'");
-                    }
-                    if (strlen($parameterParts[0]) == "") {
-                        throw new CommandsException("Invalid definition for the parameter '$parameter'");
-                    }
-                    if (!in_array($parameterParts[1], array('s', 'i', 'l'))) {
-                        throw new CommandsException("Incorrect data type on parameter '$parameter'");
-                    }
-                    $this->_preparedArguments[$parameterParts[0]] = true;
-                    $arguments[$parameterParts[0]] = array(
-                        'have-option' => true,
-                        'option-required' => false,
-                        'data-type' => $parameterParts[1]
-                    );
-                } else {
-                    if (preg_match('/([a-zA-Z0-9]+)/', $parameter)) {
-                        $this->_preparedArguments[$parameter] = true;
-                        $arguments[$parameter] = array(
-                            'have-option' => false,
-                            'option-required' => false
-                        );
-                    } else {
-                        throw new CommandsException("Invalid parameter '$parameter'");
-                    }
+                if (!preg_match('/([a-zA-Z0-9]+)/', $parameter)) {
+                    throw new CommandsException("Invalid parameter '$parameter'");
                 }
+
+                $this->_preparedArguments[$parameter] = true;
+                $arguments[$parameter] = [
+                    'have-option'     => false,
+                    'option-required' => false
+                ];
             }
         }
 
         $param = '';
         $paramName = '';
-        $receivedParams = array();
+        $receivedParams = [];
         $numberArguments = count($_SERVER['argv']);
 
         for ($i = 1; $i < $numberArguments; $i++) {
-
             $argv = $_SERVER['argv'][$i];
             if (preg_match('#^([\-]{1,2})([a-zA-Z0-9][a-zA-Z0-9\-]*)(=(.*)){0,1}$#', $argv, $matches)) {
-
                 if (strlen($matches[1]) == 1) {
                     $param = substr($matches[2], 1);
                     $paramName = substr($matches[2], 0, 1);
@@ -220,9 +265,8 @@ abstract class Command
                 if (!isset($this->_preparedArguments[$paramName])) {
                     if (!isset($possibleAlias[$paramName])) {
                         throw new CommandsException("Unknown parameter '$paramName'");
-                    } else {
-                        $paramName = $possibleAlias[$paramName];
                     }
+                    $paramName = $possibleAlias[$paramName];
                 }
 
                 if (isset($arguments[$paramName])) {
@@ -233,13 +277,10 @@ abstract class Command
                     }
                     if ($arguments[$paramName]['have-option'] == false) {
                         $receivedParams[$paramName] = true;
-                    } else {
-                        if (isset($matches[4])) {
-                            $receivedParams[$paramName] = $matches[4];
-                        }
+                    } elseif (isset($matches[4])) {
+                        $receivedParams[$paramName] = $matches[4];
                     }
                 }
-
             } else {
                 $param = $argv;
                 if ($paramName != '') {
@@ -257,6 +298,19 @@ abstract class Command
                     $receivedParams[$i - 1] = $param;
                     $param = '';
                 }
+            }
+        }
+
+        foreach (['ini', 'php', 'json', 'yaml'] as $extension) {
+            $customConfig = "config.{$extension}";
+            if (file_exists($customConfig)) {
+                $config = $this->loadConfig($customConfig);
+                $commandName = $this->getCommands()[0];
+                $optionsToMerge = $config->get($commandName);
+                if (!empty($optionsToMerge)) {
+                    $receivedParams = array_merge($optionsToMerge->toArray(), $receivedParams);
+                }
+                break;
             }
         }
 
@@ -282,7 +336,7 @@ abstract class Command
     }
 
     /**
-     *  Sets the output encoding of the script.
+     * Sets the output encoding of the script.
      * @param $encoding
      *
      * @return $this
@@ -308,22 +362,43 @@ abstract class Command
     }
 
     /**
-     * Returns the value of an option received. If more parameters are taken as filters.
-     * @param      $option
-     * @param null $filters
-     * @param null $defaultValue
+     * Returns all received options.
      *
-     * @return mixed|null
+     * @param mixed $filters Filter name or array of filters [Optional]
+     *
+     * @return array
      */
-    public function getOption($option, $filters=null, $defaultValue=null)
+    public function getOptions($filters = null)
+    {
+        if (!$filters) {
+            return $this->_parameters;
+        }
+
+        $result = [];
+
+        foreach ($this->_parameters as $param) {
+            $result[] = $this->filter($param, $filters);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the value of an option received.
+     *
+     * @param mixed $option Option name or array of options
+     * @param mixed $filters Filter name or array of filters [Optional]
+     * @param mixed $defaultValue Default value [Optional]
+     *
+     * @return mixed
+     */
+    public function getOption($option, $filters = null, $defaultValue = null)
     {
         if (is_array($option)) {
             foreach ($option as $optionItem) {
                 if (isset($this->_parameters[$optionItem])) {
                     if ($filters !== null) {
-                        $filter = new Filter();
-
-                        return $filter->sanitize($this->_parameters[$optionItem], $filters);
+                        return $this->filter($this->_parameters[$optionItem], $filters);
                     }
 
                     return $this->_parameters[$optionItem];
@@ -331,19 +406,17 @@ abstract class Command
             }
 
             return $defaultValue;
-        } else {
-            if (isset($this->_parameters[$option])) {
-                if ($filters !== null) {
-                    $filter = new Filter();
-
-                    return $filter->sanitize($this->_parameters[$option], $filters);
-                }
-
-                return $this->_parameters[$option];
-            } else {
-                return $defaultValue;
-            }
         }
+
+        if (isset($this->_parameters[$option])) {
+            if ($filters !== null) {
+                return $this->filter($this->_parameters[$option], $filters);
+            }
+
+            return $this->_parameters[$option];
+        }
+
+        return $defaultValue;
     }
 
     /**
@@ -354,7 +427,17 @@ abstract class Command
      */
     public function isReceivedOption($option)
     {
-        return isset($this->_parameters[$option]);
+        if (!is_array($option)) {
+            $option = [$option];
+        }
+
+        foreach ($option as $op) {
+            if (isset($this->_parameters[$op])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -427,7 +510,7 @@ abstract class Command
     /**
      * Returns the processed parameters
      *
-     * @return string
+     * @return array
      */
     public function getParameters()
     {
@@ -435,7 +518,7 @@ abstract class Command
     }
 
     /**
-     * By default all commands must be external
+     * {@inheritdoc}
      *
      * @return boolean
      */
@@ -445,11 +528,14 @@ abstract class Command
     }
 
     /**
-     * Return required parameters
+     * {@inheritdoc}
+     *
+     * @param string $identifier
+     *
+     * @return boolean
      */
-    public function getRequiredParams()
+    public function hasIdentifier($identifier)
     {
-
+        return in_array($identifier, $this->getCommands(), true);
     }
-
 }

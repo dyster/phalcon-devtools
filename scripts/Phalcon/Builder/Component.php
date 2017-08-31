@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -15,102 +15,92 @@
   +------------------------------------------------------------------------+
   | Authors: Andres Gutierrez <andres@phalconphp.com>                      |
   |          Eduar Carvajal <eduar@phalconphp.com>                         |
+  |          Serghei Iakovlev <serghei@phalconphp.com>                     |
   +------------------------------------------------------------------------+
 */
 
 namespace Phalcon\Builder;
 
+use Phalcon\Validation;
 use Phalcon\Script\Color;
-use Phalcon\Builder\BuilderException;
+use Phalcon\Validation\Validator\Namespaces;
 
 /**
- * \Phalcon\Builder\Component
+ * Abstract Component
  *
  * Base class for builder components
  *
- * @category 	Phalcon
- * @package 	Builder
- * @subpackage  Component
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license 	New BSD License
+ * @package Phalcon\Builder
  */
 abstract class Component
 {
-
-    protected $_options = array();
+    /**
+     * Builder Options
+     * @var Options
+     */
+    protected $options = null;
 
     /**
-     * @param $options
+     * Path Component
+     * @var Path
      */
-    public function __construct($options)
+    protected $path;
+
+    /**
+     * Create Builder object
+     *
+     * @param array $options Builder options
+     */
+    public function __construct(array $options = [])
     {
-        $this->_options = $options;
+        $this->options = new Options($options);
+        $this->path = new Path(realpath('.') . DIRECTORY_SEPARATOR);
+    }
+
+    protected function checkNamespace($namespace)
+    {
+        $validation = new Validation();
+
+        $validation->add('namespace', new Namespaces([
+            'allowEmpty' => true
+        ]));
+
+        $messages = $validation->validate(['namespace' => $namespace]);
+
+        if (count($messages)) {
+            $errors = [];
+            foreach ($messages as $message) {
+                $errors[] = $message->getMessage();
+            }
+
+            throw new BuilderException(sprintf('%s', implode(PHP_EOL, $errors)));
+        }
+
+        return true;
     }
 
     /**
      * Tries to find the current configuration in the application
      *
-     * @param $path
-     *
-     * @return mixed|\Phalcon\Config\Adapter\Ini
-     * @throws \Phalcon\Builder\BuilderException
+     * @param string $type Config type: ini | php
+     * @return \Phalcon\Config
+     * @throws BuilderException
      */
-    protected function _getConfig($path)
+    protected function getConfig($type = null)
     {
-        foreach (array('app/config/', 'config/') as $configPath) {
-            if (file_exists($path . $configPath . "config.ini")) {
-                return new \Phalcon\Config\Adapter\Ini($path . $configPath . "/config.ini");
-            } else {
-                if (file_exists($path . $configPath. "/config.php")) {
-                    $config = include($path . $configPath . "/config.php");
-                    if (is_array($config)) {
-                        $config = new \Phalcon\Config($config);
-                    }
-
-                    return $config;
-                }
-            }
-        }
-
-        $directory = new \RecursiveDirectoryIterator('.');
-        $iterator = new \RecursiveIteratorIterator($directory);
-        foreach ($iterator as $f) {
-            if (preg_match('/config\.php$/i', $f->getPathName())) {
-                $config = include $f->getPathName();
-                if (is_array($config)) {
-                    $config = new \Phalcon\Config($config);
-                }
-
-                return $config;
-            } else {
-                if (preg_match('/config\.ini$/i', $f->getPathName())) {
-                    return new \Phalcon\Config\Adapter\Ini($f->getPathName());
-                }
-            }
-        }
-        throw new BuilderException('Builder can\'t locate the configuration file');
+        return $this->path->getConfig($type);
     }
 
     /**
      * Check if a path is absolute
      *
-     * @param $path
+     * @param string $path Path to check
      *
      * @return bool
      */
     public function isAbsolutePath($path)
     {
-        if (PHP_OS == "WINNT") {
-            if (preg_match('/^[A-Z]:\\\\/', $path)) {
-                return true;
-            }
-        } else {
-            if (substr($path, 0, 1) == DIRECTORY_SEPARATOR) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->path->isAbsolutePath($path);
     }
 
     /**
@@ -120,20 +110,24 @@ abstract class Component
      */
     public function isConsole()
     {
-        return !isset($_SERVER['SERVER_SOFTWARE']);
+        return PHP_SAPI == 'cli';
     }
 
     /**
      * Check if the current adapter is supported by Phalcon
      *
-     * @param  string                            $adapter
-     * @throws \Phalcon\Builder\BuilderException
+     * @param  string $adapter
+     *
+     * @return bool
+     * @throws BuilderException
      */
     public function isSupportedAdapter($adapter)
     {
         if (!class_exists('\Phalcon\Db\Adapter\Pdo\\' . $adapter)) {
             throw new BuilderException("Adapter $adapter is not supported");
         }
+
+        return true;
     }
 
     /**
@@ -141,11 +135,10 @@ abstract class Component
      *
      * @param string $message
      */
-    protected function _notifySuccess($message)
+    protected function notifySuccess($message)
     {
         print Color::success($message);
     }
 
     abstract public function build();
-
 }

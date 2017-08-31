@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -15,34 +15,49 @@
   +------------------------------------------------------------------------+
   | Authors: Andres Gutierrez <andres@phalconphp.com>                      |
   |          Eduar Carvajal <eduar@phalconphp.com>                         |
+  |          David Schissler <david.schissler@gmail.com>                   |
+  |          Serghei Iakovlev <serghei@phalconphp.com>                     |
   +------------------------------------------------------------------------+
 */
 
 namespace Phalcon\Builder\Project;
 
+use Phalcon\Web\Tools;
+use Phalcon\Builder\Controller as ControllerBuilder;
+
 /**
  * Multi-Module
  *
- * Builder to create multi-module application skeletons
+ * Builder to create Multi-Module application skeletons
  *
- * @category    Phalcon
- * @package     Scripts
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license     New BSD License
+ * @package Phalcon\Builder\Project
  */
 class Modules extends ProjectBuilder
 {
+    use ProjectAware;
 
-    private $_dirs = array(
-        'apps/',
-        'apps/frontend',
-        'apps/frontend/views',
-        'apps/frontend/config',
-        'apps/frontend/models',
-        'apps/frontend/controllers',
-        'apps/frontend/views/index',
-        'apps/frontend/views/layouts',
-        'config/',
+    /**
+     * Project directories
+     * @var array
+     */
+    protected $projectDirectories = [
+        'app/',
+        'app/config',
+        'app/common',
+        'app/common/models',
+        'app/common/library',
+        'app/modules',
+        'app/modules/frontend',
+        'app/modules/frontend/views',
+        'app/modules/frontend/models',
+        'app/modules/frontend/controllers',
+        'app/modules/frontend/views/index',
+        'app/modules/frontend/views/layouts',
+        'app/modules/cli',
+        'app/modules/cli/migrations',
+        'app/modules/cli/tasks',
+        'cache',
+        'cache/volt',
         'public',
         'public/img',
         'public/css',
@@ -50,167 +65,216 @@ class Modules extends ProjectBuilder
         'public/files',
         'public/js',
         '.phalcon'
-    );
+    ];
 
     /**
      * Create indexController file
      *
-     * @param $path
-     * @param $name
+     * @return $this
      */
-    private function createControllerFile($path, $name)
+    private function createControllerFile()
     {
-        $modelBuilder = new \Phalcon\Builder\Controller(array(
-            'name' => 'index',
-            'controllersDir' => $path . 'apps/frontend/controllers/',
-            'namespace' => ucfirst($name) . '\Frontend\Controllers',
-            'baseClass' => 'ControllerBase'
-        ));
-        $modelBuilder->build();
+        $namespace = $this->options->get('name');
+        if (strtolower(trim($namespace)) == 'default') {
+            $namespace = 'MyDefault';
+        }
+
+        $builder = new ControllerBuilder([
+            'name'           => 'index',
+            'controllersDir' => $this->options->get('projectPath') . 'app/modules/frontend/controllers/',
+            'namespace'      => ucfirst($namespace) . '\Modules\Frontend\Controllers',
+            'baseClass'      => 'ControllerBase'
+        ]);
+
+        $builder->build();
+
+        return $this;
+    }
+
+    /**
+     * Create Default Tasks
+     *
+     * @return $this
+     */
+    private function createDefaultTasks()
+    {
+        $getFile = $this->options->get('templatePath') . '/project/modules/MainTask.php';
+        $putFile = $this->options->get('projectPath') . 'app/modules/cli/tasks/MainTask.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/VersionTask.php';
+        $putFile = $this->options->get('projectPath') . 'app/modules/cli/tasks/VersionTask.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        return $this;
     }
 
     /**
      * Create .htaccess files by default of application
      *
+     * @return $this
      */
-    private function createHtaccessFiles($path, $templatePath)
+    private function createHtaccessFiles()
     {
-
-        if (file_exists($path . '.htaccess') == false) {
+        if (file_exists($this->options->get('projectPath') . '.htaccess') == false) {
             $code = '<IfModule mod_rewrite.c>' . PHP_EOL .
                 "\t" . 'RewriteEngine on' . PHP_EOL .
                 "\t" . 'RewriteRule  ^$ public/    [L]' . PHP_EOL .
                 "\t" . 'RewriteRule  (.*) public/$1 [L]' . PHP_EOL .
                 '</IfModule>';
-            file_put_contents($path . '.htaccess', $code);
+            file_put_contents($this->options->get('projectPath') . '.htaccess', $code);
         }
 
-        if (file_exists($path . 'public/.htaccess') == false) {
-            file_put_contents($path . 'public/.htaccess', file_get_contents($templatePath . '/project/modules/htaccess'));
+        if (file_exists($this->options->get('projectPath') . 'public/.htaccess') == false) {
+            file_put_contents(
+                $this->options->get('projectPath') . 'public/.htaccess',
+                file_get_contents($this->options->get('templatePath') . '/project/modules/htaccess')
+            );
         }
 
-        if (file_exists($path . 'index.html') == false) {
+        if (file_exists($this->options->get('projectPath') . 'index.html') == false) {
             $code = '<html><body><h1>Mod-Rewrite is not enabled</h1><p>Please enable rewrite module on your web server to continue</body></html>';
-            file_put_contents($path . 'index.html', $code);
+            file_put_contents($this->options->get('projectPath') . 'index.html', $code);
         }
 
+        return $this;
     }
 
     /**
      * Create view files by default
      *
+     * @return $this
      */
-    private function createIndexViewFiles($path, $templatePath)
+    private function createIndexViewFiles()
     {
-        $getFile = $templatePath . '/project/modules/views/index.phtml';
-        $putFile = $path . 'apps/frontend/views/index.phtml';
+        $getFile = $this->options->get('templatePath') . '/project/modules/views/index.volt';
+        $putFile = $this->options->get('projectPath') . 'app/modules/frontend/views/index.volt';
         $this->generateFile($getFile, $putFile);
 
-        $getFile = $templatePath . '/project/modules/views/index/index.phtml';
-        $putFile = $path . 'apps/frontend/views/index/index.phtml';
+        $getFile = $this->options->get('templatePath') . '/project/modules/views/index/index.volt';
+        $putFile = $this->options->get('projectPath') . 'app/modules/frontend/views/index/index.volt';
         $this->generateFile($getFile, $putFile);
+
+        return $this;
     }
 
     /**
-     * Creates the configuration
+     * Creates the app/configuration
      *
-     * @param $path
-     * @param $templatePath
-     * @param $name
-     * @param $type
+     * @return $this
      */
-    private function createConfig($path, $templatePath, $name, $type)
+    private function createConfig()
     {
-        $getFile = $templatePath . '/project/modules/config.' . $type;
-        $putFile = $path . 'apps/frontend/config/config.' . $type;
-        $this->generateFile($getFile, $putFile, $name);
+        $type = $this->options->contains('useConfigIni') ? 'ini' : 'php';
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/config.' . $type;
+        $putFile = $this->options->get('projectPath') . 'app/config/config.' . $type;
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/loader.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/loader.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/routes.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/routes.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/services.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/services.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/services_web.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/services_web.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/services_cli.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/services_cli.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        return $this;
     }
 
     /**
      * Create ControllerBase
      *
-     * @param $path
-     * @param $templatePath
-     * @param $name
+     * @return $this
      */
-    private function createControllerBase($path, $templatePath, $name)
+    private function createControllerBase()
     {
-        $getFile = $templatePath . '/project/modules/ControllerBase.php';
-        $putFile = $path . 'apps/frontend/controllers/ControllerBase.php';
-        $this->generateFile($getFile, $putFile, $name);
+        $getFile = $this->options->get('templatePath') . '/project/modules/ControllerBase.php';
+        $putFile = $this->options->get('projectPath') . 'app/modules/frontend/controllers/ControllerBase.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        return $this;
     }
 
     /**
-     * Create ControllerBase
+     * Create Module
      *
-     * @param $path
-     * @param $templatePath
-     * @param $name
+     * @return $this
      */
-    private function createModule($path, $templatePath, $name)
+    private function createModules()
     {
-        $getFile = $templatePath . '/project/modules/Module.php';
-        $putFile = $path . 'apps/frontend/Module.php';
-        $this->generateFile($getFile, $putFile, $name);
+        $getFile = $this->options->get('templatePath') . '/project/modules/Module_web.php';
+        $putFile = $this->options->get('projectPath') . 'app/modules/frontend/Module.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/Module_cli.php';
+        $putFile = $this->options->get('projectPath') . 'app/modules/cli/Module.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        return $this;
     }
 
     /**
-     * Create Bootstrap file by default of application
+     * Create application bootstrap files for cli and web environments
      *
-     * @param $name
-     * @param $path
-     * @param $templatePath
+     * @return $this
      */
-    private function createBootstrapFile($name, $path, $templatePath)
+    private function createBootstrapFiles()
     {
-        $getFile = $templatePath . '/project/modules/index.php';
-        $putFile = $path . 'public/index.php';
-        $this->generateFile($getFile, $putFile, $name);
+        $getFile = $this->options->get('templatePath') . '/project/modules/bootstrap_web.php';
+        $putFile = $this->options->get('projectPath') . 'app/bootstrap_web.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
 
-        $getFile = $templatePath . '/project/modules/services.php';
-        $putFile = $path . 'config/services.php';
-        $this->generateFile($getFile, $putFile, $name);
+        $getFile = $this->options->get('templatePath') . '/project/modules/index.php';
+        $putFile = $this->options->get('projectPath') . 'public/index.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
 
-        $getFile = $templatePath . '/project/modules/modules.php';
-        $putFile = $path . 'config/modules.php';
-        $this->generateFile($getFile, $putFile, $name);
+        $getFile = $this->options->get('templatePath') . '/project/modules/bootstrap_cli.php';
+        $putFile = $this->options->get('projectPath') . 'app/bootstrap_cli.php';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+
+        $getFile = $this->options->get('templatePath') . '/project/modules/launcher';
+        $putFile = $this->options->get('projectPath') . 'run';
+        $this->generateFile($getFile, $putFile, $this->options->get('name'));
+        chmod($putFile, 0755);
+
+        return $this;
     }
 
     /**
      * Build project
      *
-     * @param $name
-     * @param $path
-     * @param $templatePath
-     * @param $options
-     *
      * @return bool
      */
-    public function build($name, $path, $templatePath, $options)
+    public function build()
     {
+        $this
+            ->buildDirectories()
+            ->getVariableValues()
+            ->createConfig()
+            ->createBootstrapFiles()
+            ->createHtaccessFiles()
+            ->createControllerBase()
+            ->createDefaultTasks()
+            ->createModules()
+            ->createIndexViewFiles()
+            ->createControllerFile()
+            ->createHtrouterFile();
 
-        $this->buildDirectories($this->_dirs,$path);
-
-        $this->getVariableValues($options);
-
-        if (isset($options['useConfigIni']) && $options['useConfigIni']) {
-            $this->createConfig($path, $templatePath, $name, 'ini');
-        } else {
-            $this->createConfig($path, $templatePath, $name, 'php');
-        }
-
-        $this->createBootstrapFile($name, $path, $templatePath);
-        $this->createHtaccessFiles($path, $templatePath);
-        $this->createControllerBase($path, $templatePath, $name);
-        $this->createModule($path, $templatePath, $name);
-        $this->createIndexViewFiles($path, $templatePath);
-        $this->createControllerFile($path, $name);
-
-        if ($options['enableWebTools']) {
-            \Phalcon\Web\Tools::install($path);
-        }
+        $this->options->contains('enableWebTools') && Tools::install($this->options->get('projectPath'));
 
         return true;
     }
-
 }

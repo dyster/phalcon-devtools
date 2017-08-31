@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -15,54 +15,89 @@
   +------------------------------------------------------------------------+
   | Authors: Andres Gutierrez <andres@phalconphp.com>                      |
   |          Eduar Carvajal <eduar@phalconphp.com>                         |
+  |          Serghei Iakovlev <serghei@phalconphp.com>                     |
   +------------------------------------------------------------------------+
 */
 
 namespace Phalcon\Builder;
 
+use Phalcon\Utils;
+use ReflectionClass;
 use Phalcon\Db\Column;
-use Phalcon\Builder\Component;
-use Phalcon\Builder\BuilderException;
-use Phalcon\Script\Color;
-use Phalcon\Text as Utils;
+use Phalcon\Validation;
+use Phalcon\Generator\Snippet;
+use Phalcon\Db\ReferenceInterface;
+use Phalcon\Validation\Validator\Email as EmailValidator;
+use Phalcon\Text;
+
 
 /**
  * ModelBuilderComponent
  *
  * Builder to generate models
  *
- * @category    Phalcon
- * @package    Builder
- * @subpackage  Model
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license    New BSD License
+ * @package Phalcon\Builder
  */
 class Model extends Component
 {
     /**
-     * Mapa de datos escalares a objetos
-     *
+     * Map of scalar data objects
      * @var array
      */
-    private $_typeMap = array(//'Date' => 'Date',
+    private $_typeMap = [
+        //'Date' => 'Date',
         //'Decimal' => 'Decimal'
-    );
+    ];
 
-    public function __construct($options)
+    /**
+     * Snippet component
+     * @var Snippet
+     */
+    protected $snippet;
+
+    /**
+     * Create Builder object
+     *
+     * @param array $options Builder options
+     * @throws BuilderException
+     */
+    public function __construct(array $options)
     {
         if (!isset($options['name'])) {
-            throw new BuilderException("Please, specify the model name");
+            throw new BuilderException('Please, specify the model name');
         }
+
+        if (!isset($options['camelize'])) {
+            $options['camelize'] = false;
+        }
+
         if (!isset($options['force'])) {
             $options['force'] = false;
         }
+
         if (!isset($options['className'])) {
-            $options['className'] = Utils::camelize($options['name']);
+            $options['className'] = Text::camelize($options['name'], '_-');
         }
+
         if (!isset($options['fileName'])) {
-            $options['fileName'] = $options['name'];
+            $options['fileName'] = Text::camelize($options['name'], '_-');
         }
-        $this->_options = $options;
+
+        if (!isset($options['abstract'])) {
+            $options['abstract'] = false;
+        }
+
+        if (!isset($options['annotate'])) {
+            $options['annotate'] = false;
+        }
+
+        if ($options['abstract']) {
+            $options['className'] = 'Abstract' . $options['className'];
+        }
+
+        parent::__construct($options);
+
+        $this->snippet = new Snippet();
     }
 
     /**
@@ -75,6 +110,7 @@ class Model extends Component
     {
         switch ($type) {
             case Column::TYPE_INTEGER:
+            case Column::TYPE_BIGINTEGER:
                 return 'integer';
                 break;
             case Column::TYPE_DECIMAL:
@@ -94,193 +130,51 @@ class Model extends Component
         }
     }
 
+    /**
+     * Module build
+     *
+     * @return mixed
+     * @throws \Phalcon\Builder\BuilderException
+     */
     public function build()
     {
-        $getSource = "
-    public function getSource()
-    {
-        return '%s';
-    }
-";
-        $templateThis = "        \$this->%s(%s);" . PHP_EOL;
-        $templateRelation = "        \$this->%s('%s', '%s', '%s', %s);" . PHP_EOL;
-        $templateSetter = "
-    /**
-     * Method to set the value of field %s
-     *
-     * @param %s \$%s
-     * @return \$this
-     */
-    public function set%s(\$%s)
-    {
-        \$this->%s = \$%s;
-
-        return \$this;
-    }
-";
-
-        $templateValidateInclusion = "
-        \$this->validate(
-            new InclusionIn(
-                array(
-                    'field'    => '%s',
-                    'domain'   => array(%s),
-                    'required' => true,
-                )
-            )
-        );";
-
-        $templateValidateEmail = "
-        \$this->validate(
-            new Email(
-                array(
-                    'field'    => '%s',
-                    'required' => true,
-                )
-            )
-        );";
-
-        $templateValidationFailed = "
-        if (\$this->validationHasFailed() == true) {
-            return false;
-        }";
-
-        $templateAttributes = "
-    /**
-     *
-     * @var %s
-     */
-    %s \$%s;
-";
-
-        $templateGetterMap = "
-    /**
-     * Returns the value of field %s
-     *
-     * @return %s
-     */
-    public function get%s()
-    {
-        if (\$this->%s) {
-            return new %s(\$this->%s);
-        } else {
-           return null;
-        }
-    }
-";
-
-        $templateGetter = "
-    /**
-     * Returns the value of field %s
-     *
-     * @return %s
-     */
-    public function get%s()
-    {
-        return \$this->%s;
-    }
-";
-
-        $templateValidations = "
-    /**
-     * Validations and business logic
-     */
-    public function validation()
-    {
-%s
-    }
-";
-
-        $templateInitialize = "
-    /**
-     * Initialize method for model.
-     */
-    public function initialize()
-    {
-%s
-    }
-";
-
-        $templateFind = "
-    /**
-     * @return %s[]
-     */
-    public static function find(\$parameters = array())
-    {
-        return parent::find(\$parameters);
-    }
-
-    /**
-     * @return %s
-     */
-    public static function findFirst(\$parameters = array())
-    {
-        return parent::findFirst(\$parameters);
-    }
-";
-
-        $templateUse = 'use %s;';
-        $templateUseAs = 'use %s as %s;';
-
-        $templateCode = "<?php
-
-%s%s%sclass %s extends %s
-{
-%s
-}
-";
-
-        if (!$this->_options['name']) {
-            throw new BuilderException("You must specify the table name");
+        if (!$this->options->contains('name')) {
+            throw new BuilderException('You must specify the table name');
         }
 
-        $path = '';
-        if (isset($this->_options['directory'])) {
-            if ($this->_options['directory']) {
-                $path = $this->_options['directory'] . '/';
+        if ($this->options->contains('directory')) {
+            $this->path->setRootPath($this->options->get('directory'));
+        }
+
+        $config = $this->getConfig();
+
+        if (!$modelsDir = $this->options->get('modelsDir')) {
+            if (!$config->get('application') || !isset($config->get('application')->modelsDir)) {
+                throw new BuilderException("Builder doesn't know where is the models directory.");
             }
-        } else {
-            $path = '.';
+
+            $modelsDir = $config->get('application')->modelsDir;
         }
 
-        $config = $this->_getConfig($path);
+        $modelsDir = rtrim($modelsDir, '/\\') . DIRECTORY_SEPARATOR;
+        $modelPath = $modelsDir;
+        if (false == $this->isAbsolutePath($modelsDir)) {
+            $modelPath = $this->path->getRootPath($modelsDir);
+        }
 
-        if (!isset($this->_options['modelsDir'])) {
-            if (!isset($config->application->modelsDir)) {
-                throw new BuilderException(
-                    "Builder doesn't knows where is the models directory"
-                );
-            }
-            $modelsDir = $config->application->modelsDir;
-        } else {
-            $modelsDir = $this->_options['modelsDir'];
-        }            
-        
-        $modelsDir = rtrim(rtrim($modelsDir, '/'), '\\') . DIRECTORY_SEPARATOR;             
-        
-        if ($this->isAbsolutePath($modelsDir) == false) {
-            $modelPath = $path . DIRECTORY_SEPARATOR . $modelsDir;
-        } else {
-            $modelPath = $modelsDir;
-        }                                 
-
-        $methodRawCode = array();
-        $className = $this->_options['className'];
+        $methodRawCode = [];
+        $className = $this->options->get('className');
         $modelPath .= $className . '.php';
 
-        if (file_exists($modelPath)) {
-            if (!$this->_options['force']) {
-                throw new BuilderException(
-                    "The model file '" . $className .
-                    ".php' already exists in models dir"
-                );
-            }
+        if (file_exists($modelPath) && !$this->options->contains('force')) {
+            throw new BuilderException(sprintf(
+                'The model file "%s.php" already exists in models dir',
+                $className
+            ));
         }
 
         if (!isset($config->database)) {
-            throw new BuilderException(
-                "Database configuration cannot be loaded from your config file"
-            );
+            throw new BuilderException('Database configuration cannot be loaded from your config file.');
         }
 
         if (!isset($config->database->adapter)) {
@@ -290,28 +184,25 @@ class Model extends Component
             );
         }
 
-        if (isset($this->_options['namespace'])) {
-            $namespace = 'namespace ' . $this->_options['namespace'] . ';'
-                . PHP_EOL . PHP_EOL;
-            $methodRawCode[] = sprintf($getSource, $this->_options['name']);
-        } else {
-            $namespace = '';
+        if (isset($config->devtools->loader)) {
+            /** @noinspection PhpIncludeInspection */
+            require_once $config->devtools->loader;
         }
 
-        $useSettersGetters = $this->_options['genSettersGetters'];
-        if (isset($this->_options['genDocMethods'])) {
-            $genDocMethods = $this->_options['genDocMethods'];
-        } else {
-            $genDocMethods = false;
+        $namespace = '';
+        if ($this->options->contains('namespace') && $this->checkNamespace($this->options->get('namespace'))) {
+            $namespace = 'namespace '.$this->options->get('namespace').';'.PHP_EOL.PHP_EOL;
         }
+
+        $genDocMethods = $this->options->get('genDocMethods', false);
+        $useSettersGetters = $this->options->get('genSettersGetters', false);
 
         $adapter = $config->database->adapter;
         $this->isSupportedAdapter($adapter);
 
+        $adapter = 'Mysql';
         if (isset($config->database->adapter)) {
             $adapter = $config->database->adapter;
-        } else {
-            $adapter = 'Mysql';
         }
 
         if (is_object($config->database)) {
@@ -321,144 +212,182 @@ class Model extends Component
         }
 
         // An array for use statements
-        $uses = array();
+        $uses = [];
 
         $adapterName = 'Phalcon\Db\Adapter\Pdo\\' . $adapter;
         unset($configArray['adapter']);
+        /** @var \Phalcon\Db\Adapter\Pdo $db */
         $db = new $adapterName($configArray);
 
-        $initialize = array();
-        if (isset($this->_options['schema'])) {
-            if ($this->_options['schema'] != $config->database->dbname) {
-                $initialize[] = sprintf(
-                    $templateThis, 'setSchema', '"' . $this->_options['schema'] . '"'
+        $initialize = [];
+
+        if ($this->options->contains('schema')) {
+            $schema = $this->options->get('schema');
+        } else {
+            $schema = Utils::resolveDbSchema($config->database);
+        }
+
+        if ($schema) {
+            $initialize['schema'] = $this->snippet->getThisMethod('setSchema', $schema);
+        }
+        $initialize['source'] = $this->snippet->getThisMethod('setSource', $this->options->get('name'));
+
+        $table = $this->options->get('name');
+
+        if (!$db->tableExists($table, $schema)) {
+            throw new BuilderException(sprintf('Table "%s" does not exist.', $table));
+        }
+        $fields = $db->describeColumns($table, $schema);
+
+        if (!$this->options->contains('referenceList')) {
+            foreach ($db->listTables($schema) as $name) {
+                $referenceList[$name] = $db->describeReferences($name, $schema);;
+            }
+        } else {
+            $referenceList = $this->options->get('referenceList');
+        }
+
+        foreach ($referenceList as $tableName => $references) {
+            foreach ($references as $reference) {
+                if ($reference->getReferencedTable() != $this->options->get('name')) {
+                    continue;
+                }
+
+                $entityNamespace = '';
+                if ($this->options->contains('namespace')) {
+                    $entityNamespace = $this->options->get('namespace')."\\";
+                }
+
+                $refColumns = $reference->getReferencedColumns();
+                $columns = $reference->getColumns();
+                $initialize[] = $this->snippet->getRelation(
+                    'hasMany',
+                    $this->options->get('camelize') ? Utils::lowerCamelize($refColumns[0]) : $refColumns[0],
+                    $entityNamespace . Text::camelize($tableName, '_-'),
+                    $this->options->get('camelize') ? Utils::lowerCamelize($columns[0]) : $columns[0],
+                    "['alias' => '" . Text::camelize($tableName, '_-') . "']"
                 );
             }
-            $schema = $this->_options['schema'];
-        } elseif ($adapter == 'Postgresql') {
-            $schema = 'public';
-            $initialize[] = sprintf(
-                $templateThis, 'setSchema', '"' . $this->_options['schema'] . '"'
-            );
-        } else {
-            $schema = $config->database->dbname;
         }
 
-        if ($this->_options['fileName'] != $this->_options['name']) {
-            $initialize[] = sprintf(
-                $templateThis, 'setSource',
-                '\'' . $this->_options['name'] . '\''
-            );
-        }
-
-        $table = $this->_options['name'];
-        if ($db->tableExists($table, $schema)) {
-            $fields = $db->describeColumns($table, $schema);
-        } else {
-            throw new BuilderException('Table "' . $table . '" does not exist');
-        }
-
-        if (isset($this->_options['hasMany'])) {
-            if (count($this->_options['hasMany'])) {
-                foreach ($this->_options['hasMany'] as $relation) {
-                    if (is_string($relation['fields'])) {
-                        $entityName = $relation['camelizedName'];
-                        if (isset($this->_options['namespace'])) {
-                            $entityNamespace = "{$this->_options['namespace']}\\";
-                            $relation['options']['alias'] = $entityName;
-                        } else {
-                            $entityNamespace = '';
-                        }
-                        $initialize[] = sprintf(
-                            $templateRelation,
-                            'hasMany',
-                            $relation['fields'],
-                            $entityNamespace . $entityName,
-                            $relation['relationFields'],
-                            $this->_buildRelationOptions( isset($relation['options']) ? $relation["options"] : NULL)
-                        );
-                    }
-                }
+        foreach ($db->describeReferences($this->options->get('name'), $schema) as $reference) {
+            $entityNamespace = '';
+            if ($this->options->contains('namespace')) {
+                $entityNamespace = $this->options->get('namespace');
             }
+
+            $refColumns = $reference->getReferencedColumns();
+            $columns = $reference->getColumns();
+            $initialize[] = $this->snippet->getRelation(
+                'belongsTo',
+                $this->options->get('camelize') ? Utils::lowerCamelize($columns[0]) : $columns[0],
+                $this->getEntityClassName($reference, $entityNamespace),
+                $this->options->get('camelize') ? Utils::lowerCamelize($refColumns[0]) : $refColumns[0],
+                "['alias' => '" . Text::camelize($reference->getReferencedTable(), '_-') . "']"
+            );
         }
 
-        if (isset($this->_options['belongsTo'])) {
-            if (count($this->_options['belongsTo'])) {
-                foreach ($this->_options['belongsTo'] as $relation) {
-                    if (is_string($relation['fields'])) {
-                        $entityName = $relation['referencedModel'];
-                        if (isset($this->_options['namespace'])) {
-                            $entityNamespace = "{$this->_options['namespace']}\\";
-                            $relation['options']['alias'] = $entityName;
-                        } else {
-                            $entityNamespace = '';
-                        }
-                        $initialize[] = sprintf(
-                            $templateRelation,
-                            'belongsTo',
-                            $relation['fields'],
-                            $entityNamespace . $entityName,
-                            $relation['relationFields'],
-                            $this->_buildRelationOptions(isset($relation['options']) ? $relation["options"] : NULL)
-                        );
-                    }
-                }
-            }
-        }
+        $alreadyInitialized  = false;
+        $alreadyValidations  = false;
+        $alreadyFind         = false;
+        $alreadyFindFirst    = false;
+        $alreadyColumnMapped = false;
+        $alreadyGetSourced   = false;
 
-        $alreadyInitialized = false;
-        $alreadyValidations = false;
         if (file_exists($modelPath)) {
             try {
-                $possibleMethods = array();
+                $possibleMethods = [];
                 if ($useSettersGetters) {
                     foreach ($fields as $field) {
-                        $methodName = Utils::camelize($field->getName());
+                        /** @var \Phalcon\Db\Column $field */
+                        $methodName = Text::camelize($field->getName(), '_-');
+
                         $possibleMethods['set' . $methodName] = true;
                         $possibleMethods['get' . $methodName] = true;
                     }
                 }
 
-                require $modelPath;
+                $possibleMethods['getSource'] = true;
+
+                /** @noinspection PhpIncludeInspection */
+                require_once $modelPath;
 
                 $linesCode = file($modelPath);
-                $fullClassName = $this->_options['className'];
-                if (isset($this->_options['namespace'])) {
-                    $fullClassName = $this->_options['namespace'].'\\'.$fullClassName;
+                $fullClassName = $this->options->get('className');
+                if ($this->options->contains('namespace')) {
+                    $fullClassName = $this->options->get('namespace').'\\'.$fullClassName;
                 }
-                $reflection = new \ReflectionClass($fullClassName);
+                $reflection = new ReflectionClass($fullClassName);
                 foreach ($reflection->getMethods() as $method) {
-                    if ($method->getDeclaringClass()->getName() == $fullClassName) {
-                        $methodName = $method->getName();
-                        if (!isset($possibleMethods[$methodName])) {
-                            $methodRawCode[$methodName] = join(
-                                '',
-                                array_slice(
-                                    $linesCode,
-                                    $method->getStartLine() - 1,
-                                    $method->getEndLine() - $method->getStartLine() + 1
-                                )
-                            );
-                        } else {
-                            continue;
-                        }
-                        if ($methodName == 'initialize') {
-                            $alreadyInitialized = true;
-                        } else {
-                            if ($methodName == 'validation') {
-                                $alreadyValidations = true;
-                            }
+                    if ($method->getDeclaringClass()->getName() != $fullClassName) {
+                        continue;
+                    }
+
+                    $methodName = $method->getName();
+                    if (isset($possibleMethods[$methodName])) {
+                        continue;
+                    }
+
+                    $indent = PHP_EOL;
+                    if ($method->getDocComment()) {
+                        $firstLine = $linesCode[$method->getStartLine() - 1];
+                        preg_match('#^\s+#', $firstLine, $matches);
+                        if (isset($matches[0])) {
+                            $indent .= $matches[0];
                         }
                     }
+
+                    $methodDeclaration = join(
+                        '',
+                        array_slice(
+                            $linesCode,
+                            $method->getStartLine() - 1,
+                            $method->getEndLine() - $method->getStartLine() + 1
+                        )
+                    );
+
+                    $methodRawCode[$methodName] = $indent . $method->getDocComment() . PHP_EOL . $methodDeclaration;
+
+                    switch ($methodName) {
+                        case 'initialize':
+                            $alreadyInitialized = true;
+                            break;
+                        case 'validation':
+                            $alreadyValidations = true;
+                            break;
+                        case 'find':
+                            $alreadyFind = true;
+                            break;
+                        case 'findFirst':
+                            $alreadyFindFirst = true;
+                            break;
+                        case 'columnMap':
+                            $alreadyColumnMapped = true;
+                            break;
+                        case 'getSource':
+                            $alreadyGetSourced = true;
+                            break;
+                    }
                 }
-            } catch (\ReflectionException $e) {
+            } catch (\Exception $e) {
+                throw new BuilderException(
+                    sprintf('Failed to create the model "%s". Error: %s',
+                        $this->options->get('className'),
+                        $e->getMessage()
+                    )
+                );
             }
         }
 
-        $validations = array();
+        $validations = [];
         foreach ($fields as $field) {
             if ($field->getType() === Column::TYPE_CHAR) {
-                $domain = array();
+                if ($this->options->get('camelize')) {
+                    $fieldName = Utils::lowerCamelize(Utils::camelize($field->getName(), '_-'));
+                } else {
+                    $fieldName = Utils::lowerCamelize(Utils::camelize($field->getName(), '-'));
+                }
+                $domain = [];
                 if (preg_match('/\((.*)\)/', $field->getType(), $matches)) {
                     foreach (explode(',', $matches[1]) as $item) {
                         $domain[] = $item;
@@ -466,124 +395,70 @@ class Model extends Component
                 }
                 if (count($domain)) {
                     $varItems = join(', ', $domain);
-                    $validations[] = sprintf(
-                        $templateValidateInclusion, $field->getName(), $varItems
-                    );
+                    $validations[] = $this->snippet->getValidateInclusion($fieldName, $varItems);
                 }
             }
             if ($field->getName() == 'email') {
-                $validations[] = sprintf(
-                    $templateValidateEmail, $field->getName()
-                );
-                $uses[] = sprintf(
-                    $templateUseAs,
-                    'Phalcon\Mvc\Model\Validator\Email',
-                    'Email'
-                );
+                if ($this->options->get('camelize')) {
+                    $fieldName = Utils::lowerCamelize(Utils::camelize($field->getName(), '_-'));
+                } else {
+                    $fieldName = Utils::lowerCamelize(Utils::camelize($field->getName(), '-'));
+                }
+                $validations[] = $this->snippet->getValidateEmail($fieldName);
+                $uses[] = $this->snippet->getUseAs(EmailValidator::class, 'EmailValidator');
             }
         }
         if (count($validations)) {
-            $validations[] = $templateValidationFailed;
+            $validations[] = $this->snippet->getValidationEnd();
         }
 
-        /**
-         * Check if there has been an extender class
-         */
-        $extends = '\\Phalcon\\Mvc\\Model';
-        if (isset($this->_options['extends'])) {
-            if (!empty($this->_options['extends'])) {
-                $extends = $this->_options['extends'];
-            }
-        }
+        // Check if there has been an extender class
+        $extends = $this->options->get('extends', '\Phalcon\Mvc\Model');
 
-        /**
-         * Check if there have been any excluded fields
-         */
-        $exclude = array();
-        if (isset($this->_options['excludeFields'])) {
-            if (!empty($this->_options['excludeFields'])) {
-                $keys = explode(',', $this->_options['excludeFields']);
-                if (count($keys) > 0) {
-                    foreach ($keys as $key) {
-                        $exclude[trim($key)] = '';
-                    }
+        // Check if there have been any excluded fields
+        $exclude = [];
+        if ($this->options->contains('excludeFields')) {
+            $keys = explode(',', $this->options->get('excludeFields'));
+            if (count($keys) > 0) {
+                foreach ($keys as $key) {
+                    $exclude[trim($key)] = '';
                 }
             }
         }
 
-        $attributes = array();
-        $setters = array();
-        $getters = array();
+        $attributes = [];
+        $setters = [];
+        $getters = [];
         foreach ($fields as $field) {
+            if (array_key_exists(strtolower($field->getName()), $exclude)) {
+                continue;
+            }
             $type = $this->getPHPType($field->getType());
+            $fieldName = Utils::lowerCamelizeWithDelimiter($field->getName(), '-', true);
+            $fieldName = $this->options->get('camelize') ? Utils::lowerCamelize($fieldName) : $fieldName;
+            $attributes[] = $this->snippet->getAttributes($type, $useSettersGetters ? 'protected' : 'public', $field, $this->options->has( 'annotate' ), $fieldName);
+
             if ($useSettersGetters) {
+                $methodName = Utils::camelize($field->getName(), '_-');
+                $setters[] = $this->snippet->getSetter($fieldName, $type, $methodName);
 
-                if (!array_key_exists(strtolower($field->getName()), $exclude)) {
-                    $attributes[] = sprintf(
-                        $templateAttributes, $type, 'protected', $field->getName()
-                    );
-                    $setterName = Utils::camelize($field->getName());
-                    $setters[] = sprintf(
-                        $templateSetter,
-                        $field->getName(),
-                        $type,
-                        $field->getName(),
-                        $setterName,
-                        $field->getName(),
-                        $field->getName(),
-                        $field->getName()
-                    );
-
-                    if (isset($this->_typeMap[$type])) {
-                        $getters[] = sprintf(
-                            $templateGetterMap,
-                            $field->getName(),
-                            $type,
-                            $setterName,
-                            $field->getName(),
-                            $this->_typeMap[$type],
-                            $field->getName()
-                        );
-                    } else {
-                        $getters[] = sprintf(
-                            $templateGetter,
-                            $field->getName(),
-                            $type,
-                            $setterName,
-                            $field->getName()
-                        );
-                    }
+                if (isset($this->_typeMap[$type])) {
+                    $getters[] = $this->snippet->getGetterMap($fieldName, $type, $methodName, $this->_typeMap[$type]);
+                } else {
+                    $getters[] = $this->snippet->getGetter($fieldName, $type, $methodName);
                 }
-            } else {
-                $attributes[] = sprintf(
-                    $templateAttributes, $type, 'public', $field->getName()
-                );
             }
         }
 
-        if ($alreadyValidations == false) {
-            if (count($validations) > 0) {
-                $validationsCode = sprintf(
-                    $templateValidations, join('', $validations)
-                );
-            } else {
-                $validationsCode = '';
-            }
-        } else {
-            $validationsCode = '';
+        $validationsCode = '';
+        if ($alreadyValidations == false && count($validations) > 0) {
+            $validationsCode = $this->snippet->getValidationsMethod($validations);
+            $uses[] = $this->snippet->getUse(Validation::class);
         }
 
-        if ($alreadyInitialized == false) {
-            if (count($initialize) > 0) {
-                $initCode = sprintf(
-                    $templateInitialize,
-                    rtrim(join('', $initialize))
-                );
-            } else {
-                $initCode = '';
-            }
-        } else {
-            $initCode = '';
+        $initCode = '';
+        if ($alreadyInitialized == false && count($initialize) > 0) {
+            $initCode = $this->snippet->getInitialize($initialize);
         }
 
         $license = '';
@@ -591,11 +466,22 @@ class Model extends Component
             $license = trim(file_get_contents('license.txt')) . PHP_EOL . PHP_EOL;
         }
 
+        if (false == $alreadyGetSourced) {
+            $methodRawCode[] = $this->snippet->getModelSource($this->options->get('name'));
+        }
+
+        if (false == $alreadyFind) {
+            $methodRawCode[] = $this->snippet->getModelFind($className);
+        }
+
+        if (false == $alreadyFindFirst) {
+            $methodRawCode[] = $this->snippet->getModelFindFirst($className);
+        }
+
         $content = join('', $attributes);
 
         if ($useSettersGetters) {
-            $content .= join('', $setters)
-                . join('', $getters);
+            $content .= join('', $setters) . join('', $getters);
         }
 
         $content .= $validationsCode . $initCode;
@@ -603,85 +489,47 @@ class Model extends Component
             $content .= $methodCode;
         }
 
+        $classDoc = '';
         if ($genDocMethods) {
-            $content .= sprintf($templateFind, $className, $className);
+            $classDoc = $this->snippet->getClassDoc($className, $namespace);
         }
 
-        if (isset($this->_options['mapColumn'])) {
-            $content .= $this->_genColumnMapCode($fields);
+        if ($this->options->contains('mapColumn') && false == $alreadyColumnMapped) {
+            $content .= $this->snippet->getColumnMap($fields, $this->options->get('camelize'));
         }
 
-        $str_use = '';
+        $useDefinition = '';
         if (!empty($uses)) {
-            $str_use = implode(PHP_EOL, $uses) . PHP_EOL . PHP_EOL;
+            usort($uses, function ($a, $b) {
+                return strlen($a) - strlen($b);
+            });
+
+            $useDefinition = join("\n", $uses) . PHP_EOL . PHP_EOL;
         }
 
-        $code = sprintf(
-            $templateCode,
-            $license,
-            $namespace,
-            $str_use,
-            $className,
-            $extends,
-            $content
-        );
+        $abstract = ($this->options->contains('abstract') ? 'abstract ' : '');
 
-        if (!@file_put_contents($modelPath, $code)) {
-                throw new BuilderException("Unable to write to '$modelPath'");
+        $code = $this->snippet->getClass($namespace, $useDefinition, $classDoc, $abstract, $className, $extends, $content, $license);
+
+        if (file_exists($modelPath) && !is_writable($modelPath)) {
+            throw new BuilderException(sprintf('Unable to write to %s. Check write-access of a file.', $modelPath));
+        }
+
+        if (!file_put_contents($modelPath, $code)) {
+            throw new BuilderException(sprintf('Unable to write to %s', $modelPath));
         }
 
         if ($this->isConsole()) {
-            $this->_notifySuccess('Model "' . $this->_options['name'] .'" was successfully created.');
+            $msgSuccess = ($this->options->contains('abstract') ? 'Abstract ' : '') . 'Model "%s" was successfully created.';
+            $this->notifySuccess(sprintf($msgSuccess, Text::camelize($this->options->get('name'), '_-')));
         }
     }
 
-    /**
-     * Builds a PHP syntax with all the options in the array
-     * @param  array  $options
-     * @return string PHP syntax
-     */
-    private function _buildRelationOptions($options)
+    protected function getEntityClassName(ReferenceInterface $reference, $namespace)
     {
-        if (empty($options)) {
-            return 'NULL';
-        }
+        $referencedTable = Utils::camelize($reference->getReferencedTable());
+        $fqcn = "{$namespace}\\{$referencedTable}";
 
-        $values = array();
-        foreach ($options as $name=>$val) {
-            if (is_bool($val)) {
-                $val = $val ? 'true':'false';
-            } elseif (!is_numeric($val)) {
-                $val = "'{$val}'";
-            }
-
-            $values[] = sprintf('\'%s\' => %s', $name, $val);
-        }
-
-        $syntax = 'array('. implode(',', $values). ')';
-
-        return $syntax;
+        return $fqcn;
     }
-
-    private function _genColumnMapCode($fields)
-    {
-        $template = '
-    /**
-     * Independent Column Mapping.
-     */
-    public function columnMap()
-    {
-        return array(
-            %s
-        );
-    }
-';
-        $contents = array();
-        foreach ($fields as $field) {
-            $name = $field->getName();
-            $contents[] = sprintf('\'%s\' => \'%s\'', $name, $name);
-        }
-
-        return sprintf($template, join(", \n            ", $contents));
-    }
-
 }

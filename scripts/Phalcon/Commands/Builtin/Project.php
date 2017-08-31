@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -22,74 +22,77 @@ namespace Phalcon\Commands\Builtin;
 
 use Phalcon\Script\Color;
 use Phalcon\Commands\Command;
-use Phalcon\Commands\CommandsInterface;
 use Phalcon\Builder\Project as ProjectBuilder;
 
 /**
- * CreateProject
+ * Project Command
  *
  * Creates project skeletons
  *
- * @category 	Phalcon
- * @package		Command
- * @subpackage  Project
- * @copyright	Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license		New BSD License
+ * @package Phalcon\Commands\Builtin
 */
-class Project extends Command implements CommandsInterface
+class Project extends Command
 {
-
-    protected $_possibleParameters = array(
-        'name' => 'Name of the new project',
-        'enable-webtools' => 'Determines if webtools should be enabled [optional]',
-        'directory=s' => 'Base path on which project will be created [optional]',
-        'type=s' => 'Type of the application to be generated (micro, simple, modules)',
-        'template-path' => 'Specify a template path [optional]',
-        'use-config-ini' => 'Use a ini file as configuration file [optional]',
-        'trace' => 'Shows the trace of the framework in case of exception. [optional]',
-        'help' => 'Shows this help'
-    );
+    /**
+     * {@inheritdoc}
+     *
+     * @return array
+     */
+    public function getPossibleParams()
+    {
+        return [
+            'name=s'            => 'Name of the new project',
+            'enable-webtools' => 'Determines if webtools should be enabled [optional]',
+            'directory=s'     => 'Base path on which project will be created [optional]',
+            'type=s'          => 'Type of the application to be generated (cli, micro, simple, modules)',
+            'template-path=s' => 'Specify a template path [optional]',
+            'use-config-ini'  => 'Use a ini file as configuration file [optional]',
+            'trace'           => 'Shows the trace of the framework in case of exception [optional]',
+            'help'            => 'Shows this help [optional]',
+        ];
+    }
 
     /**
-     * Executes the current command
+     * {@inheritdoc}
      *
-     * @param  array $parameters
+     * @param array $parameters
      * @return mixed
      */
-    public function run($parameters)
+    public function run(array $parameters)
     {
-
-        $projectName = $this->getOption(array('name', 1), null, 'default');
-        $projectType = $this->getOption(array('type', 2), null, 'simple');
-        $projectPath = $this->getOption(array('directory', 3), null, '');
-        $templatePath = $this->getOption(array('template-path'), null, TEMPLATE_PATH);
-        $enableWebtools = $this->getOption(array('enable-webtools', 4), null, false);
+        $projectName = $this->getOption(['name', 1], null, 'default');
+        $projectType = $this->getOption(['type', 2], null, 'simple');
+        $projectPath = $this->getOption(['directory', 3]);
+        $templatePath = $this->getOption(['template-path'], null, TEMPLATE_PATH);
+        $enableWebtools = $this->getOption(['enable-webtools', 4], null, false);
         $useConfigIni = $this->getOption('use-config-ini');
 
-        $builder = new ProjectBuilder(array(
-            'name' => $projectName,
-            'type' => $projectType,
-            'directory' => $projectPath,
+        $builder = new ProjectBuilder([
+            'name'           => $projectName,
+            'type'           => $projectType,
+            'directory'      => $projectPath,
             'enableWebTools' => $enableWebtools,
-            'templatePath' => $templatePath,
-            'useConfigIni' => $useConfigIni
-        ));
+            'templatePath'   => $templatePath,
+            'useConfigIni'   => $useConfigIni
+        ]);
 
         return $builder->build();
     }
 
     /**
-     * Returns the command identifier
+     * {@inheritdoc}
      *
      * @return array
      */
     public function getCommands()
     {
-        return array('project', 'create-project');
+        return ['project', 'create-project'];
     }
 
     /**
-     * Checks whether the command can be executed outside a Phalcon project
+     * {@inheritdoc}
+     *
+     * @return boolean
      */
     public function canBeExternal()
     {
@@ -97,7 +100,7 @@ class Project extends Command implements CommandsInterface
     }
 
     /**
-     * Prints the help for current command.
+     * {@inheritdoc}
      *
      * @return void
      */
@@ -116,13 +119,13 @@ class Project extends Command implements CommandsInterface
         print Color::head('Example') . PHP_EOL;
         print Color::colorize('  phalcon project store simple', Color::FG_GREEN) . PHP_EOL . PHP_EOL;
 
-        $this->printParameters($this->_possibleParameters);
+        $this->printParameters($this->getPossibleParams());
     }
 
     /**
-     * Returns number of required parameters for this command
+     * {@inheritdoc}
      *
-     * @return int
+     * @return integer
      */
     public function getRequiredParams()
     {

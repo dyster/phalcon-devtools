@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -20,79 +20,100 @@
 
 namespace Phalcon\Commands\Builtin;
 
-use Phalcon\Text;
+use Phalcon\Builder\AllModels as AllModelsBuilder;
 use Phalcon\Builder;
-use Phalcon\Script\Color;
+use Phalcon\Config\Adapter\Ini as ConfigIni;
+use Phalcon\Config;
 use Phalcon\Commands\Command;
-use Phalcon\Commands\CommandsInterface;
+use Phalcon\Commands\CommandsException;
 
 /**
- * AllModels
+ * AllModels Command
  *
  * Create all models from a database
  *
- * @category 	Phalcon
- * @package 	Commands
- * @subpackage  Builtin
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license 	New BSD License
+ * @package Phalcon\Commands\Builtin
  */
-class AllModels extends Command implements CommandsInterface
+class AllModels extends Command
 {
-
-    protected $_possibleParameters = array(
-        'config=s' 			=> "Configuration file  ",
-        'models=s' 			=> "Models directory ",
-        'schema=s'        	=> "Name of the schema. [optional]",
-        'namespace=s'       => "Model's namespace [optional]",
-        'extends=s'         => "Models extends [optional]",
-        'force'				=> "Force script to rewrite all the models.  ",
-        'get-set' 			=> "Attributes will be protected and have setters/getters.  ",
-        'doc' 				=> "Helps to improve code completion on IDEs  ",
-        'relations' 		=> "Possible relations defined according to convention.  ",
-        'fk' 				=> "Define any virtual foreign keys.  ",
-        'validations' 		=> "Define possible domain validation according to conventions.  ",
-        'directory=s' 		=> "Base path on which project will be created",
-    );
+    /**
+     * {@inheritdoc}
+     *
+     * @return array
+     */
+    public function getPossibleParams()
+    {
+        return [
+            'config=s'    => 'Configuration file [optional]',
+            'schema=s'    => 'Name of the schema. [optional]',
+            'namespace=s' => "Model's namespace [optional]",
+            'extends=s'   => 'Models extends [optional]',
+            'force'       => 'Force script to rewrite all the models [optional]',
+            'camelize'    => 'Properties is in camelCase [optional]',
+            'get-set'     => 'Attributes will be protected and have setters/getters [optional]',
+            'doc'         => 'Helps to improve code completion on IDEs [optional]',
+            'relations'   => 'Possible relations defined according to convention [optional]',
+            'fk'          => 'Define any virtual foreign keys [optional]',
+            'directory=s' => 'Base path on which project will be created [optional]',
+            'output=s'    => 'Folder where models are located [optional]',
+            'mapcolumn'   => 'Get some code for map columns [optional]',
+            'abstract'    => 'Abstract Model [optional]',
+            'help'        => 'Shows this help [optional]',
+        ];
+    }
 
     /**
-     * @param $parameters
+     * {@inheritdoc}
+     *
+     * @param array $parameters
+     * @return mixed
+     * @throws CommandsException
      */
-    public function run($parameters)
+    public function run(array $parameters)
     {
-
-        $path = '';
         if ($this->isReceivedOption('directory')) {
-            $path = $this->getOption('directory') . '/';
+            if (false == $this->path->isAbsolutePath($this->getOption('directory'))) {
+                $this->path->appendRootPath($this->getOption('directory'));
+            } else {
+                $this->path->setRootPath($this->getOption('directory'));
+            }
         }
 
-        $config = null;
-        if (!$this->isReceivedOption('models')) {
-
-            $fileType = file_exists($path . "app/config/config.ini") ? "ini" : "php";
-
-            if ($this->isReceivedOption('config')) {
-                $configPath = $path.$this->getOption('config')."/config.".$fileType;
+        if ($this->isReceivedOption('config')) {
+            if (false == $this->path->isAbsolutePath($this->getOption('config'))) {
+                $configPath = $this->path->getRootPath() . $this->getOption('config');
             } else {
-                $configPath = $path."app/config/config." . $fileType;
+                $configPath = $this->getOption('config');
             }
 
-            if ($fileType == 'ini') {
-                $config = new \Phalcon\Config\Adapter\Ini($configPath);
+            if (preg_match('/.*(:?\.ini)(?:\s)?$/i', $configPath)) {
+                $config = new ConfigIni($configPath);
             } else {
                 $config = include $configPath;
+
+                if (is_array($config)) {
+                    $config = new Config($config);
+                }
             }
 
-            if (file_exists($path.'public')) {
-                $modelsDir = 'public/'.$config->application->modelsDir;
-            } else {
-                $modelsDir = $config->application->modelsDir;
-            }
         } else {
-            $modelsDir = $this->getOption('models');
+            $config = $this->path->getConfig();
         }
 
-        $modelBuilder = new \Phalcon\Builder\AllModels(array(
+        if (!$this->isReceivedOption('output')) {
+            if (!isset($config->application->modelsDir)) {
+                throw new CommandsException("Builder doesn't know where is the models directory.");
+            }
+            $modelsDir = rtrim($config->application->modelsDir, '\\/') . DIRECTORY_SEPARATOR;
+        } else {
+            $modelsDir = $this->getOption('output');
+        }
+
+        if (false == $this->path->isAbsolutePath($modelsDir)) {
+            $modelsDir = $this->path->getRootPath($modelsDir);
+        }
+
+        $modelBuilder = new AllModelsBuilder([
             'force' => $this->isReceivedOption('force'),
             'config' => $config,
             'schema' => $this->getOption('schema'),
@@ -104,49 +125,41 @@ class AllModels extends Command implements CommandsInterface
             'genSettersGetters' => $this->isReceivedOption('get-set'),
             'genDocMethods' => $this->isReceivedOption('doc'),
             'modelsDir' => $modelsDir,
-        ));
+            'mapColumn' => $this->isReceivedOption('mapcolumn'),
+            'abstract' => $this->isReceivedOption('abstract'),
+            'camelize' => $this->isReceivedOption('camelize'),
+        ]);
 
         $modelBuilder->build();
     }
 
     /**
-     * Returns the commands provided by the command
+     * {@inheritdoc}
      *
      * @return array
      */
     public function getCommands()
     {
-        return array('all-models', 'create-all-models');
+        return ['all-models', 'create-all-models'];
     }
 
     /**
-     * Checks whether the command can be executed outside a Phalcon project
-     *
-     * @return boolean
-     */
-    public function canBeExternal()
-    {
-        return false;
-    }
-
-    /**
-     * Prints the help for current command.
+     * {@inheritdoc}
      *
      * @return void
      */
     public function getHelp()
     {
-        $this->printParameters($this->_possibleParameters);
+        $this->printParameters($this->getPossibleParams());
     }
 
     /**
-     * Returns number of required parameters for this command
+     * {@inheritdoc}
      *
-     * @return int
+     * @return integer
      */
     public function getRequiredParams()
     {
         return 0;
     }
-
 }

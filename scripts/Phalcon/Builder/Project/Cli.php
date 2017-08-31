@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -15,6 +15,7 @@
   +------------------------------------------------------------------------+
   | Authors: Andres Gutierrez <andres@phalconphp.com>                      |
   |          Eduar Carvajal <eduar@phalconphp.com>                         |
+  |          Serghei Iakovlev <serghei@phalconphp.com>                     |
   +------------------------------------------------------------------------+
 */
 
@@ -25,127 +26,112 @@ use Phalcon\Script\Color;
 /**
  * Cli
  *
- * Builder to create cli application skeletons
+ * Builder to create Cli application skeletons
  *
- * @category    Phalcon
- * @package     Scripts
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license     New BSD License
+ * @package Phalcon\Builder\Project
  */
 class Cli extends ProjectBuilder
 {
-
-    private $_dirs = array(
+    /**
+     * Project directories
+     * @var array
+     */
+    protected $projectDirectories = [
         'app',
         'app/config',
         'app/tasks',
+        'app/models',
         '.phalcon',
-    );
+    ];
 
     /**
      * Creates the configuration
      *
-     * @param $path
-     * @param $templatePath
-     * @param $type
+     * @return $this
      */
-    private function createConfig($path, $templatePath)
+    private function createConfig()
     {
-        $getFile = $templatePath . '/project/cli/config.php';
-        $putFile = $path . 'app/config/config.php';
+        $type = $this->options->contains('useConfigIni') ? 'ini' : 'php';
+
+        $getFile = $this->options->get('templatePath') . '/project/cli/config.' . $type;
+        $putFile = $this->options->get('projectPath') . 'app/config/config.' . $type;
         $this->generateFile($getFile, $putFile);
 
-        $getFile = $templatePath . '/project/cli/services.php';
-        $putFile = $path . 'app/config/services.php';
+        $getFile = $this->options->get('templatePath') . '/project/cli/services.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/services.php';
         $this->generateFile($getFile, $putFile);
 
-        $getFile = $templatePath . '/project/cli/loader.php';
-        $putFile = $path . 'app/config/loader.php';
+        $getFile = $this->options->get('templatePath') . '/project/cli/loader.php';
+        $putFile = $this->options->get('projectPath') . 'app/config/loader.php';
         $this->generateFile($getFile, $putFile);
+
+        return $this;
     }
 
     /**
      * Create Bootstrap file by default of application
      *
-     * @param $path
-     * @param $templatePath
-     * @param $useIniConfig
+     * @return $this
      */
-    private function createBootstrapFiles($path, $templatePath)
+    private function createBootstrapFiles()
     {
-        $getFile = $templatePath . '/project/cli/cli.php';
-        $putFile = $path . 'app/cli.php';
+        $getFile = $this->options->get('templatePath') . '/project/cli/bootstrap.php';
+        $putFile = $this->options->get('projectPath') . 'app/bootstrap.php';
         $this->generateFile($getFile, $putFile);
+
+        return $this;
     }
 
     /**
      * Create Default Tasks
      *
-     * @param $path
-     * @param $templatePath
+     * @return $this
      */
-    private function createDefaultTasks($path, $templatePath)
+    private function createDefaultTasks()
     {
-        $getFile = $templatePath . '/project/cli/MainTask.php';
-        $putFile = $path . 'app/tasks/MainTask.php';
+        $getFile = $this->options->get('templatePath') . '/project/cli/MainTask.php';
+        $putFile = $this->options->get('projectPath') . 'app/tasks/MainTask.php';
         $this->generateFile($getFile, $putFile);
 
-        $getFile = $templatePath . '/project/cli/VersionTask.php';
-        $putFile = $path . 'app/tasks/VersionTask.php';
+        $getFile = $this->options->get('templatePath') . '/project/cli/VersionTask.php';
+        $putFile = $this->options->get('projectPath') . 'app/tasks/VersionTask.php';
         $this->generateFile($getFile, $putFile);
+
+        return $this;
     }
 
     /**
      * Create a launcher file to launch the application simply with ./project/application
      *
-     * @param $name string name of the application
-     * @param $path string path to the project root
-     * @param $templatePath
+     * @return $this
      */
-    private function createLauncher($name,$path,$templatePath)
+    private function createLauncher()
     {
-        $getFile = $templatePath . '/project/cli/launcher';
-        $putFile = $path . $name;
+        $getFile = $this->options->get('templatePath') . '/project/cli/launcher';
+        $putFile = $this->options->get('projectPath') . 'run';
         $this->generateFile($getFile, $putFile);
-        chmod($putFile , 0755);
+        chmod($putFile, 0755);
+
+        return $this;
     }
 
     /**
      * Build project
      *
-     * @param $name
-     * @param $path
-     * @param $templatePath
-     * @param $options
-     *
      * @return bool
      */
-    public function build($name, $path, $templatePath, $options)
+    public function build()
     {
+        $this
+            ->buildDirectories()
+            ->getVariableValues()
+            ->createConfig()
+            ->createBootstrapFiles()
+            ->createDefaultTasks()
+            ->createLauncher();
 
-        $this->buildDirectories($this->_dirs,$path);
-
-        $this->getVariableValues($options);
-
-        $this->createConfig($path, $templatePath);
-
-        /*if (isset($options['useConfigIni']) && $options['useConfigIni']) {
-            $this->createConfig($path, $templatePath, 'ini');
-        } else {
-            $this->createConfig($path, $templatePath, 'php');
-        }*/
-
-        $this->createBootstrapFiles($path, $templatePath);
-
-        $this->createDefaultTasks($path, $templatePath);
-
-        $this->createLauncher($name,$path,$templatePath);
-
-        $pathSymLink = realpath( $path . $name );
-
-        print Color::success("You can create a symlink to $pathSymLink to invoke the application") . PHP_EOL;
+        print Color::success(sprintf('You can create a symlink to %s to invoke the application', $this->options->get('projectPath') . 'run')) . PHP_EOL;
 
         return true;
     }
-
 }

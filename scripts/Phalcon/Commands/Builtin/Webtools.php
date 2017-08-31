@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -22,87 +22,76 @@ namespace Phalcon\Commands\Builtin;
 
 use Phalcon\Script\Color;
 use Phalcon\Commands\Command;
-use Phalcon\Commands\CommandsInterface;
 use Phalcon\Web\Tools;
+use Phalcon\Commands\CommandsException;
 
 /**
- * Phalcon\Commands\Webtools
+ * Webtools Command
  *
  * Enables/disables webtools in a project
+ *
+ * @package Phalcon\Commands\Builtin
  */
-class Webtools extends Command implements CommandsInterface
+class Webtools extends Command
 {
     /**
-     * Possible command parameters
-     *
-     * @var array
-     */
-    protected $params = array(
-        'action=s' => 'Enables/Disables webtools in a project'
-    );
-
-    /**
-     * Return an array of possible command parameters
+     * {@inheritdoc}
      *
      * @return array
      */
     public function getPossibleParams()
     {
-        return $this->params;
+        return [
+            'action=s' => 'Enables/Disables webtools in a project [enable|disable]',
+            'help'     => 'Shows this help [optional]',
+        ];
     }
 
     /**
-     * Run the command
+     * {@inheritdoc}
      *
-     * @param  array $parameters
-     * @return void
+     * @param array $parameters
+     * @return mixed
+     * @throws CommandsException
      */
-    public function run($parameters)
+    public function run(array $parameters)
     {
-        $action = $this->getOption(array('action', 1));
+        $action = $this->getOption(['action', 1]);
         $directory = './';
 
         if ($action == 'enable') {
-            if (file_exists($directory . 'public/webtools.php'))
-                throw new \Exception('Webtools are already enabled!');
+            if (file_exists($directory . 'public/webtools.php')) {
+                throw new CommandsException('Webtools are already enabled!');
+            }
 
             Tools::install($directory);
 
             echo Color::success('Webtools successfully enabled!');
         } elseif ($action == 'disable') {
-            if ( ! file_exists($directory . 'public/webtools.php'))
-                throw new \Exception('Webtools are already disabled!');
+            if (!file_exists($directory . 'public/webtools.php')) {
+                throw new CommandsException('Webtools are already disabled!');
+            }
 
             Tools::uninstall($directory);
 
             echo Color::success('Webtools successfully disabled!');
         } else {
-            throw new \Exception('Invalid action!');
+            throw new CommandsException('Invalid action!');
         }
     }
 
     /**
-     * Return the commands provided by the command
+     * {@inheritdoc}
      *
      * @return array
      */
     public function getCommands()
     {
-        return array('webtools');
+        return ['webtools', 'create-webtools'];
     }
 
     /**
-     * Check whether the command can be executed outside a Phalcon project
-     *
-     * @return bool
-     */
-    public function canBeExternal()
-    {
-        return false;
-    }
-
-    /**
-     * Print the help on the usage of the command
+     * {@inheritdoc}
      *
      * @return void
      */
@@ -111,20 +100,23 @@ class Webtools extends Command implements CommandsInterface
         echo Color::head('Help:') . PHP_EOL;
         echo Color::colorize('  Enables/disables webtools in a project') . PHP_EOL . PHP_EOL;
 
-        echo Color::head('Usage:') . PHP_EOL;
-        echo Color::colorize('  webtools [action]', Color::FG_GREEN) . PHP_EOL . PHP_EOL;
+        print Color::head('Usage: Enable webtools') . PHP_EOL;
+        print Color::colorize('  webtools enable', Color::FG_GREEN) . PHP_EOL . PHP_EOL;
+
+        print Color::head('Usage: Disable webtools') . PHP_EOL;
+        print Color::colorize('  webtools disable', Color::FG_GREEN) . PHP_EOL . PHP_EOL;
 
         echo Color::head('Arguments:') . PHP_EOL;
-        echo Color::colorize('  ?', Color::FG_GREEN);
+        echo Color::colorize('  help', Color::FG_GREEN);
         echo Color::colorize("\tShows this help text") . PHP_EOL . PHP_EOL;
 
-        $this->printParameters($this->params);
+        $this->printParameters($this->getPossibleParams());
     }
 
     /**
-     * Return the number of required parameters for this command
+     * {@inheritdoc}
      *
-     * @return int
+     * @return integer
      */
     public function getRequiredParams()
     {

@@ -4,10 +4,10 @@
   +------------------------------------------------------------------------+
   | Phalcon Developer Tools                                                |
   +------------------------------------------------------------------------+
-  | Copyright (c) 2011-2014 Phalcon Team (http://www.phalconphp.com)       |
+  | Copyright (c) 2011-2016 Phalcon Team (https://www.phalconphp.com)      |
   +------------------------------------------------------------------------+
   | This source file is subject to the New BSD License that is bundled     |
-  | with this package in the file docs/LICENSE.txt.                        |
+  | with this package in the file LICENSE.txt.                             |
   |                                                                        |
   | If you did not receive a copy of the license and are unable to         |
   | obtain it through the world-wide-web, please send an email             |
@@ -23,87 +23,81 @@ namespace Phalcon\Commands\Builtin;
 use Phalcon\Builder;
 use Phalcon\Script\Color;
 use Phalcon\Commands\Command;
-use Phalcon\Commands\CommandsInterface;
 use Phalcon\Builder\Scaffold as ScaffoldBuilder;
 
 /**
- * \Phalcon\Command\Scaffold
+ * Scaffold Command
  *
  * Scaffold a controller, model and view for a database table
  *
- * @category 	Phalcon
- * @package 	Command
- * @subpackage  Scaffold
- * @copyright   Copyright (c) 2011-2014 Phalcon Team (team@phalconphp.com)
- * @license 	New BSD License
+ * @package Phalcon\Commands\Builtin
  */
-class Scaffold extends Command implements CommandsInterface
+class Scaffold extends Command
 {
-
-    protected $_possibleParameters = array(
-        'table-name=s'   => "Table used as base to generate the scaffold",
-        'schema=s'       => "Name of the schema. [optional]",
-        'get-set'        => "Attributes will be protected and have setters/getters. [optional]",
-        'directory=s'    => "Base path on which project was created [optional]",
-        'template-path=s'	 => 'Specify a template path [optional]',
-        'template-engine=s'=> 'Define the template engine, default php (php, volt). [optional]',
-        'force'          => "Forces to rewrite generated code if they already exists. [optional]",
-        'trace'          => "Shows the trace of the framework in case of exception. [optional]",
-        'ns-models=s'     => "Model's namespace [optional]",
-        'ns-controllers=s'     => "Controller's namespace [optional]",
-    );
+    /**
+     * {@inheritdoc}
+     *
+     * @return array
+     */
+    public function getPossibleParams()
+    {
+        return [
+            'table-name=s'      => 'Table used as base to generate the scaffold',
+            'schema=s'          => 'Name of the schema [optional]',
+            'get-set'           => 'Attributes will be protected and have setters/getters. [optional]',
+            'directory=s'       => 'Base path on which project was created [optional]',
+            'template-path=s'   => 'Specify a template path [optional]',
+            'template-engine=s' => 'Define the template engine, default php (php, volt) [optional]',
+            'force'             => 'Forces to rewrite generated code if they already exists [optional]',
+            'trace'             => 'Shows the trace of the framework in case of exception [optional]',
+            'ns-models=s'       => "Model's namespace [optional]",
+            'ns-controllers=s'  => "Controller's namespace [optional]",
+            'help'              => 'Shows this help [optional]',
+        ];
+    }
 
     /**
-     * @param $parameters
+     * {@inheritdoc}
      *
-     * @return bool
+     * @param array $parameters
+     * @return mixed
      */
-    public function run($parameters)
+    public function run(array $parameters)
     {
-
-        $name = $this->getOption(array('table-name', 1));
-        $templatePath = $this->getOption(array('template-path'), null, TEMPLATE_PATH);
+        $name = $this->getOption(['table-name', 1]);
+        $templatePath = $this->getOption(['template-path'], null, TEMPLATE_PATH);
         $schema = $this->getOption('schema');
-        $templateEngine = $this->getOption(array('template-engine'), null, "php");
+        $templateEngine = $this->getOption(['template-engine'], null, "php");
 
-        $scaffoldBuilder = new scaffoldBuilder(array(
-            'name' => $name,
-            'schema' => $schema,
-            'force'	=> $this->isReceivedOption('force'),
-            'genSettersGetters' => $this->isReceivedOption('get-set'),
-            'directory' => $this->getOption('directory'),
-            'templatePath' => $templatePath,
-            'templateEngine'=> $templateEngine,
-            'modelsNamespace' => $this->getOption('ns-models'),
+        $scaffoldBuilder = new ScaffoldBuilder([
+            'name'                 => $name,
+            'schema'               => $schema,
+            'force'                => $this->isReceivedOption('force'),
+            'genSettersGetters'    => $this->isReceivedOption('get-set'),
+            'directory'            => $this->getOption('directory'),
+            'templatePath'         => $templatePath,
+            'templateEngine'       => $templateEngine,
+            'modelsNamespace'      => $this->getOption('ns-models'),
             'controllersNamespace' => $this->getOption('ns-controllers'),
-        ));
+        ]);
 
         return $scaffoldBuilder->build();
     }
 
     /**
-     * Returns the command identifier
+     * {@inheritdoc}
      *
-     * @return string
+     * @return array
      */
     public function getCommands()
     {
-        return array('scaffold');
+        return ['scaffold', 'create-scaffold'];
     }
 
     /**
-     * Checks whether the command can be executed outside a Phalcon project
+     * {@inheritdoc}
      *
-     * @return boolean
-     */
-    public function canBeExternal()
-    {
-        return false;
-    }
-
-    /**
-     * Prints help on the usage of the command
-     *
+     * @return void
      */
     public function getHelp()
     {
@@ -114,20 +108,19 @@ class Scaffold extends Command implements CommandsInterface
         print Color::colorize('  scaffold [tableName] [options]', Color::FG_GREEN) . PHP_EOL . PHP_EOL;
 
         print Color::head('Arguments:') . PHP_EOL;
-        print Color::colorize('  ?', Color::FG_GREEN);
+        print Color::colorize('  help', Color::FG_GREEN);
         print Color::colorize("\tShows this help text") . PHP_EOL . PHP_EOL;
 
-        $this->printParameters($this->_possibleParameters);
+        $this->printParameters($this->getPossibleParams());
     }
 
     /**
-     * Returns number of required parameters for this command
+     * {@inheritdoc}
      *
-     * @return int
+     * @return integer
      */
     public function getRequiredParams()
     {
         return 1;
     }
-
 }
